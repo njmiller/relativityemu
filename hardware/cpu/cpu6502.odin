@@ -1,12 +1,56 @@
 package cpu
 
 import "core:fmt"
+import "core:math/bits"
+import "core:log"
 
 OpCode :: enum u8 {
     BRK = 0x00,
-    LDA = 0xA9,
+    ADC_IX = 0x61,
+    ADC_ZP = 0x65,
+    ADC_IM = 0x69,
+    ADC_A = 0x6D,
+    ADC_IY = 0x71,
+    ADC_ZPX = 0x75,
+    ADC_AY = 0x79,
+    ADC_AX = 0x7D,
+    LDA_IX = 0xA1,
+    LDA_ZP = 0xA5,
+    LDA_IM = 0xA9,
     TAX = 0xAA,
+    LDA_A = 0xAD,
+    LDA_IY = 0xB1,
+    LDA_ZPX = 0xB5,
+    LDA_AY = 0xB9,
+    LDA_AX = 0xBD,
     INX = 0xE8,
+}
+
+AddModeMap := map[OpCode]OpCodeInfo {
+    .BRK = {7, .NoneAddressing},
+    .LDA_IM = {2, .Immediate},
+    .LDA_ZP = {3, .ZeroPage},
+    .LDA_ZPX = {4, .ZeroPage_X},
+    .LDA_A = {4, .Absolute},
+    .LDA_AX = {4, .Absolute_X},
+    .LDA_AY = {4, .Absolute_Y},
+    .LDA_IX = {6, .Indirect_X},
+    .LDA_IY = {5, .Indirect_Y},
+    .TAX = {2, .NoneAddressing},
+    .INX = {2, .NoneAddressing},
+    .ADC_IM = {2, .Immediate},
+    .ADC_ZP = {3, .ZeroPage},
+    .ADC_ZPX = {4, .ZeroPage_X},
+    .ADC_A = {4, .Absolute},
+    .ADC_AX = {4, .Absolute_X},
+    .ADC_AY = {4, .Absolute_Y},
+    .ADC_IX = {6, .Indirect_X},
+    .ADC_IY = {5, .Indirect_Y},
+}
+
+OpCodeInfo :: struct {
+    nCycles : int,
+    addMode : AddressingMode,
 }
 
 AddressingMode :: enum u8 {
@@ -31,10 +75,6 @@ MOS6502 :: struct {
     iy: u8,
 }
 
-test1 :: proc() {
-    fmt.println("TEST CPU Package")
-}
-
 setFlags :: proc(value: u8, flagsIn: u8) -> u8 {
     return 1
 } 
@@ -55,32 +95,58 @@ setNegativeFlag :: proc(value: u8, flagsIn: u8) -> u8 {
     return flagsOut
 }
 
-brk :: proc() -> int {
-    return 7
+setOverflowFlag :: proc(val1: u8, val2: u8, flagsIn: u8) -> u8 {
+    overflowFlag : u8 : 0b0100_0000
+    isOverflow := (val1 & 0x80) != (val2 & 0x80)
+    flagsOut := isOverflow ? flagsIn | overflowFlag : flagsIn &~ overflowFlag
+    return flagsOut
 }
 
-lda :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) -> int {
+brk :: proc() {}
+
+adc :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
+    
+    m := getValue8(state, memory, addMode)
+
+    value, cy := bits.overflowing_add(state.a, m)
+    value2, cy2 := bits.overflowing_add(state.a, state.status & 1) 
+    
+    state.status = setNegativeFlag(value2, state.status)
+    state.status = setZeroFlag(value2, state.status)
+    state.status = setOverflowFlag(state.a, value2, state.status)
+    state.status = cy | cy2 ? state.status | 1 : state.status &~ 1
+
+    state.a = value2
+}
+
+lda :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
     state.a = getValue8(state, memory, addMode)
     state.status = setZeroFlag(state.a, state.status)
     state.status = setNegativeFlag(state.a, state.status)
-
-    return 2
 }
 
-tax :: proc(state: ^MOS6502) -> int {
+ldx :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
+    state.ix = getValue8(state, memory, addMode)
+    state.status = setZeroFlag(state.a, state.status)
+    state.status = setNegativeFlag(state.a, state.status)
+}
+
+ldy :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
+    state.iy = getValue8(state, memory, addMode)
+    state.status = setZeroFlag(state.a, state.status)
+    state.status = setNegativeFlag(state.a, state.status)
+}
+
+tax :: proc(state: ^MOS6502) {
     state.ix = state.a
     state.status = setZeroFlag(state.ix, state.status)
     state.status = setNegativeFlag(state.ix, state.status)
-
-    return 2
 }
 
-inx :: proc(state: ^MOS6502) -> int {
+inx :: proc(state: ^MOS6502) {
     state.ix += 1
     state.status = setZeroFlag(state.ix, state.status)
     state.status = setNegativeFlag(state.ix, state.status)
-
-    return 2
 }
 
 getValue8 :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) -> u8 {
@@ -113,9 +179,11 @@ getValue8 :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) -> u8 
             high := memory[base+1]
             return memory[getCombined(high, low) + u16(state.iy)]
         case .NoneAddressing:
-            fmt.println("ERROR IN ADRESSING")
+            log.error("Trying to read operand with NoneAddressing")
+            return 0
     }
 
+    log.error("Somehow made it past the switch statement which should always return")
     return 0
 }
 
@@ -149,26 +217,37 @@ readImmediate8 :: proc(state: ^MOS6502, memory: []u8) -> u8 {
     return memory[state.pc-1]
 }
 
+/*
 readImmediate16 :: proc(state: ^MOS6502, memory: []u8) -> u16 {
     low := readImmediate8(state, memory)
     high := readImmediate8(state, memory)
     return getCombined(high, low)
+}
+*/
+
+readImmediate16 :: proc(state: ^MOS6502, memory: []u8) -> u16 {
+    state.pc += 2
+    return auto_cast (cast(^u16le) &memory[state.pc-2])^
 }
 
 emulate6502p :: proc(state: ^MOS6502, memory: []u8) -> int {
     opcode : OpCode = auto_cast readImmediate8(state, memory)
     nCycles : int
 
+    opCodeInfo := AddModeMap[opcode]
+
     switch opcode {
         case .BRK:
-            nCycles = brk()
-        case .LDA:
-            nCycles = lda(state, memory, .Immediate)
+            brk()
+        case .LDA_IM, .LDA_ZP, .LDA_ZPX, .LDA_A, .LDA_AX, .LDA_AY, .LDA_IX, .LDA_IY:
+            lda(state, memory, opCodeInfo.addMode)
+        case .ADC_IM, .ADC_ZP, .ADC_ZPX, .ADC_A, .ADC_AX, .ADC_AY, .ADC_IX, .ADC_IY:
+            adc(state, memory, opCodeInfo.addMode)
         case .TAX:
-            nCycles = tax(state)
+            tax(state)
         case .INX:
-            nCycles = inx(state)
+            inx(state)
     }
 
-    return 1
+    return opCodeInfo.nCycles
 }
