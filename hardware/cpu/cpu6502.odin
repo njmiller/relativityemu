@@ -6,54 +6,125 @@ import "core:math/bits"
 
 OpCode :: enum u8 {
 	BRK     = 0x00,
+	ORA_IX  = 0x01,
+	ORA_ZP  = 0x05,
 	ASL_ZP  = 0x06,
+	PHP     = 0x08,
+	ORA_IM  = 0x09,
 	ASL_ACC = 0x0A,
+	ORA_A   = 0x0D,
 	ASL_A   = 0x0E,
 	BPL     = 0x10,
+	ORA_IY  = 0x11,
+	ORA_ZPX = 0x15,
 	ASL_ZPX = 0x16,
 	CLC     = 0x18,
+	ORA_AY  = 0x19,
+	ORA_AX  = 0x1D,
 	ASL_AX  = 0x1E,
+	JSR     = 0x20,
 	AND_IX  = 0x21,
 	BIT_ZP  = 0x24,
 	AND_ZP  = 0x25,
+	ROL_ZP  = 0x26,
+	PLP     = 0x28,
 	AND_IM  = 0x29,
+	ROL_ACC = 0x2A,
 	BIT_A   = 0x2C,
 	AND_A   = 0x2D,
+	ROL_A   = 0x2E,
 	BMI     = 0x30,
 	AND_IY  = 0x31,
 	AND_ZPX = 0x35,
+	ROL_ZPX = 0x36,
+	SEC     = 0x38,
 	AND_AY  = 0x39,
 	AND_AX  = 0x3D,
+	ROL_AX  = 0x3E,
+	RTI     = 0x40,
+	EOR_IX  = 0x41,
+	EOR_ZP  = 0x45,
+	LSR_ZP  = 0x46,
+	PHA     = 0x48,
+	EOR_IM  = 0x49,
+	LSR_ACC = 0x4A,
+	JMP_A   = 0x4C,
+	EOR_A   = 0x4D,
+	LSR_A   = 0x4E,
 	BVC     = 0x50,
+	EOR_IY  = 0x51,
+	EOR_ZPX = 0x55,
+	LSR_ZPX = 0x56,
 	CLI     = 0x58,
+	EOR_AY  = 0x59,
+	EOR_AX  = 0x5D,
+	LSR_AX  = 0x5E,
+	RTS     = 0x60,
 	ADC_IX  = 0x61,
 	ADC_ZP  = 0x65,
+	ROR_ZP  = 0x66,
+	PLA     = 0x68,
 	ADC_IM  = 0x69,
+	ROR_ACC = 0x6A,
+	JMP_I   = 0x6C,
 	ADC_A   = 0x6D,
+	ROR_A   = 0x6E,
 	BVS     = 0x70,
 	ADC_IY  = 0x71,
 	ADC_ZPX = 0x75,
+	ROR_ZPX = 0x76,
+	SEI     = 0x78,
 	ADC_AY  = 0x79,
 	ADC_AX  = 0x7D,
+	ROR_AX  = 0x7E,
+	STA_IX  = 0x81,
+	STY_ZP  = 0x84,
+	STA_ZP  = 0x85,
+	STX_ZP  = 0x86,
 	DEY     = 0x88,
+	TXA     = 0x8A,
+	STY_A   = 0x8C,
+	STA_A   = 0x8D,
+	STX_A   = 0x8E,
 	BCC     = 0x90,
+	STA_IY  = 0x91,
+	STY_ZPX = 0x94,
+	STA_ZPX = 0x95,
+	STX_ZPY = 0x96,
+	TYA     = 0x98,
+	STA_AY  = 0x99,
+	TXS     = 0x9A,
+	STA_AX  = 0x9D,
+	LDY_IM  = 0xA0,
 	LDA_IX  = 0xA1,
+	LDX_IM  = 0xA2,
+	LDY_ZP  = 0xA4,
 	LDA_ZP  = 0xA5,
+	LDX_ZP  = 0xA6,
+	TAY     = 0xA8,
 	LDA_IM  = 0xA9,
 	TAX     = 0xAA,
+	LDY_A   = 0xAC,
 	LDA_A   = 0xAD,
+	LDX_A   = 0xAE,
 	BCS     = 0xB0,
 	LDA_IY  = 0xB1,
+	LDY_ZPX = 0xB4,
 	LDA_ZPX = 0xB5,
+	LDX_ZPY = 0xB6,
 	CLV     = 0xB8,
 	LDA_AY  = 0xB9,
+	TSX     = 0xBA,
+	LDY_AX  = 0xBC,
 	LDA_AX  = 0xBD,
-	CPY_I   = 0xC0,
+	LDX_AY  = 0xBE,
+	CPY_IM  = 0xC0,
 	CMP_IX  = 0xC1,
 	CPY_ZP  = 0xC4,
 	CMP_ZP  = 0xC5,
 	DEC_ZP  = 0xC6,
-	CMP_I   = 0xC9,
+	INY     = 0xC8,
+	CMP_IM  = 0xC9,
 	DEX     = 0xCA,
 	CPY_A   = 0xCC,
 	CMP_A   = 0xCD,
@@ -66,25 +137,29 @@ OpCode :: enum u8 {
 	CMP_AY  = 0xD9,
 	CMP_AX  = 0xDD,
 	DEC_AX  = 0xDE,
-	CPX_I   = 0xE0,
+	CPX_IM  = 0xE0,
+	SBC_IX  = 0xE1,
 	CPX_ZP  = 0xE4,
+	SBC_ZP  = 0xE5,
+	INC_ZP  = 0xE6,
 	INX     = 0xE8,
+	SBC_IM  = 0xE9,
+	NOP     = 0xEA,
 	CPX_A   = 0xEC,
+	SBC_A   = 0xED,
+	INC_A   = 0xEE,
 	BEQ     = 0xF0,
+	SBC_IY  = 0xF1,
+	SBC_ZPX = 0xF5,
+	INC_ZPX = 0xF6,
+	SED     = 0xF8,
+	SBC_AY  = 0xF9,
+	SBC_AX  = 0xFD,
+	INC_AX  = 0xFE,
 }
 
 AddModeMap := map[OpCode]OpCodeInfo {
 	.BRK = {7, .NoneAddressing},
-	.LDA_IM = {2, .Immediate},
-	.LDA_ZP = {3, .ZeroPage},
-	.LDA_ZPX = {4, .ZeroPage_X},
-	.LDA_A = {4, .Absolute},
-	.LDA_AX = {4, .Absolute_X},
-	.LDA_AY = {4, .Absolute_Y},
-	.LDA_IX = {6, .Indirect_X},
-	.LDA_IY = {5, .Indirect_Y},
-	.TAX = {2, .NoneAddressing},
-	.INX = {2, .NoneAddressing},
 	.ADC_IM = {2, .Immediate},
 	.ADC_ZP = {3, .ZeroPage},
 	.ADC_ZPX = {4, .ZeroPage_X},
@@ -115,7 +190,7 @@ AddModeMap := map[OpCode]OpCodeInfo {
 	.CLD = {2, .NoneAddressing},
 	.CLI = {2, .NoneAddressing},
 	.CLV = {2, .NoneAddressing},
-	.CMP_I = {2, .Immediate},
+	.CMP_IM = {2, .Immediate},
 	.CMP_ZP = {3, .ZeroPage},
 	.CMP_ZPX = {4, .ZeroPage_X},
 	.CMP_A = {4, .Absolute},
@@ -123,10 +198,10 @@ AddModeMap := map[OpCode]OpCodeInfo {
 	.CMP_AY = {4, .Absolute_Y},
 	.CMP_IX = {6, .Indirect_X},
 	.CMP_IY = {5, .Indirect_Y},
-	.CPX_I = {2, .Immediate},
+	.CPX_IM = {2, .Immediate},
 	.CPX_ZP = {3, .ZeroPage},
 	.CPX_A = {4, .Absolute},
-	.CPY_I = {2, .Immediate},
+	.CPY_IM = {2, .Immediate},
 	.CPY_ZP = {3, .ZeroPage},
 	.CPY_A = {4, .Absolute},
 	.DEC_ZP = {5, .ZeroPage},
@@ -135,6 +210,100 @@ AddModeMap := map[OpCode]OpCodeInfo {
 	.DEC_AX = {7, .Absolute_X},
 	.DEX = {2, .NoneAddressing},
 	.DEY = {2, .NoneAddressing},
+	.EOR_IM = {2, .Immediate},
+	.EOR_ZP = {3, .ZeroPage},
+	.EOR_ZPX = {4, .ZeroPage_X},
+	.EOR_A = {4, .Absolute},
+	.EOR_AX = {4, .Absolute_X},
+	.EOR_IX = {6, .Indirect_X},
+	.EOR_IY = {5, .Indirect_Y},
+	.INC_ZP = {5, .ZeroPage},
+	.INC_ZPX = {6, .ZeroPage_X},
+	.INC_A = {6, .Absolute},
+	.INC_AX = {7, .Absolute_X},
+	.INX = {2, .NoneAddressing},
+	.INY = {2, .NoneAddressing},
+	.JMP_A = {3, .Absolute},
+	.JMP_I = {5, .Indirect},
+	.JSR = {6, .Absolute},
+	.LDA_IM = {2, .Immediate},
+	.LDA_ZP = {3, .ZeroPage},
+	.LDA_ZPX = {4, .ZeroPage_X},
+	.LDA_A = {4, .Absolute},
+	.LDA_AX = {4, .Absolute_X},
+	.LDA_AY = {4, .Absolute_Y},
+	.LDA_IX = {6, .Indirect_X},
+	.LDA_IY = {5, .Indirect_Y},
+	.LDX_IM = {2, .Immediate},
+	.LDX_ZP = {3, .ZeroPage},
+	.LDX_ZPY = {4, .ZeroPage_Y},
+	.LDX_A = {4, .Absolute},
+	.LDX_AY = {4, .Absolute_Y},
+	.LDY_IM = {2, .Immediate},
+	.LDY_ZP = {3, .ZeroPage},
+	.LDY_ZPX = {4, .ZeroPage_X},
+	.LDY_A = {4, .Absolute},
+	.LDY_AX = {4, .Absolute_X},
+	.LSR_ACC = {2, .Accumulator},
+	.LSR_ZP = {5, .ZeroPage},
+	.LSR_ZPX = {6, .ZeroPage_X},
+	.LSR_A = {6, .Absolute},
+	.LSR_AX = {7, .Absolute_X},
+	.NOP = {1, .NoneAddressing},
+	.ORA_IM = {2, .Immediate},
+	.ORA_ZP = {3, .ZeroPage},
+	.ORA_ZPX = {4, .ZeroPage_X},
+	.ORA_A = {4, .Absolute},
+	.ORA_AX = {4, .Absolute_X},
+	.ORA_AY = {4, .Absolute_Y},
+	.ORA_IX = {6, .Indirect_X},
+	.ORA_IY = {5, .Indirect_Y},
+	.PHA = {3, .NoneAddressing},
+	.PHP = {3, .NoneAddressing},
+	.PLA = {4, .NoneAddressing},
+	.PLP = {4, .NoneAddressing},
+	.ROL_ACC = {2, .Accumulator},
+	.ROL_ZP = {5, .ZeroPage},
+	.ROL_ZPX = {6, .ZeroPage_X},
+	.ROL_A = {6, .Absolute},
+	.ROL_AX = {7, .Absolute_X},
+	.ROR_ACC = {2, .Accumulator},
+	.ROR_ZP = {5, .ZeroPage},
+	.ROR_ZPX = {6, .ZeroPage_X},
+	.ROR_A = {6, .Absolute},
+	.ROR_AX = {7, .Absolute_X},
+	.RTI = {6, .NoneAddressing},
+	.RTS = {6, .NoneAddressing},
+	.SBC_IM = {2, .Immediate},
+	.SBC_ZP = {3, .ZeroPage},
+	.SBC_ZPX = {4, .ZeroPage_X},
+	.SBC_A = {4, .Absolute},
+	.SBC_AX = {4, .Absolute_X},
+	.SBC_AY = {4, .Absolute_Y},
+	.SBC_IX = {6, .Indirect_X},
+	.SBC_IY = {5, .Indirect_Y},
+	.SEC = {2, .NoneAddressing},
+	.SED = {2, .NoneAddressing},
+	.SEI = {2, .NoneAddressing},
+	.STA_ZP = {3, .ZeroPage},
+	.STA_ZPX = {4, .ZeroPage_X},
+	.STA_A = {4, .Absolute},
+	.STA_AX = {5, .Absolute_X},
+	.STA_AY = {5, .Absolute_Y},
+	.STA_IX = {6, .Indirect_X},
+	.STA_IY = {6, .Indirect_Y},
+	.STX_ZP = {3, .ZeroPage},
+	.STX_ZPY = {4, .ZeroPage_Y},
+	.STX_A = {4, .Absolute},
+	.STY_ZP = {3, .ZeroPage},
+	.STY_ZPX = {4, .ZeroPage_X},
+	.STY_A = {4, .Absolute},
+	.TAX = {2, .NoneAddressing},
+	.TAY = {2, .NoneAddressing},
+	.TSX = {2, .NoneAddressing},
+	.TXA = {2, .NoneAddressing},
+	.TXS = {2, .NoneAddressing},
+	.TYA = {2, .NoneAddressing},
 }
 
 OpCodeInfo :: struct {
@@ -152,6 +321,7 @@ AddressingMode :: enum u8 {
 	Absolute,
 	Absolute_X,
 	Absolute_Y,
+	Indirect,
 	Indirect_X,
 	Indirect_Y,
 	NoneAddressing,
@@ -372,6 +542,13 @@ jump :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode, sub: bool) 
 	state.pc = int(value)
 }
 
+loadRegister :: proc(state: ^MOS6502, register: ^u8, memory: []u8, addMode: AddressingMode) {
+	register^ = getValue8(state, memory, addMode)
+	state.status = setZeroFlag(register^, state.status)
+	state.status = setNegativeFlag(register^, state.status)
+}
+
+/*
 lda :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
 	state.a = getValue8(state, memory, addMode)
 	state.status = setZeroFlag(state.a, state.status)
@@ -389,6 +566,7 @@ ldy :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
 	state.status = setZeroFlag(state.a, state.status)
 	state.status = setNegativeFlag(state.a, state.status)
 }
+*/
 
 lsr :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
 	m := getValue8(state, memory, addMode)
@@ -505,6 +683,11 @@ getOffset :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) -> u16
 		return u16(readImmediate8(state, memory) + state.ix)
 	case .ZeroPage_Y:
 		return u16(readImmediate8(state, memory) + state.iy)
+	case .Indirect:
+		offset1 := readImmediate16(state, memory)
+		low := memory[offset1]
+		high := memory[offset1 + 1]
+		return getCombined(high, low)
 	case .Indirect_X:
 		addr := state.ix + readImmediate8(state, memory)
 		low := memory[addr]
@@ -547,6 +730,8 @@ getValue8 :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) -> u8 
 		return memory[readImmediate8(state, memory) + state.ix]
 	case .ZeroPage_Y:
 		return memory[readImmediate8(state, memory) + state.iy]
+	case .Indirect:
+		log.error("Should never be trying to get memory value with Indirect addressing mode")
 	case .Indirect_X:
 		addr := state.ix + readImmediate8(state, memory)
 		low := memory[addr]
@@ -671,8 +856,6 @@ emulate6502p :: proc(state: ^MOS6502, memory: []u8) -> int {
 	switch opcode {
 	case .BRK:
 		brk(state)
-	case .LDA_IM, .LDA_ZP, .LDA_ZPX, .LDA_A, .LDA_AX, .LDA_AY, .LDA_IX, .LDA_IY:
-		lda(state, memory, opCodeInfo.addMode)
 	case .ADC_IM, .ADC_ZP, .ADC_ZPX, .ADC_A, .ADC_AX, .ADC_AY, .ADC_IX, .ADC_IY:
 		adc(state, memory, opCodeInfo.addMode)
 	case .AND_IM, .AND_ZP, .AND_ZPX, .AND_A, .AND_AX, .AND_AY, .AND_IX, .AND_IY:
@@ -705,11 +888,11 @@ emulate6502p :: proc(state: ^MOS6502, memory: []u8) -> int {
 		clear(state, InterruptDisable)
 	case .CLV:
 		clear(state, OverflowFlag)
-	case .CMP_I, .CMP_ZP, .CMP_ZPX, .CMP_A, .CMP_AX, .CMP_AY, .CMP_IX, .CMP_IY:
+	case .CMP_IM, .CMP_ZP, .CMP_ZPX, .CMP_A, .CMP_AX, .CMP_AY, .CMP_IX, .CMP_IY:
 		compare(state, &state.a, memory, opCodeInfo.addMode)
-	case .CPX_I, .CPX_ZP, .CPX_A:
+	case .CPX_IM, .CPX_ZP, .CPX_A:
 		compare(state, &state.ix, memory, opCodeInfo.addMode)
-	case .CPY_I, .CPY_ZP, .CPY_A:
+	case .CPY_IM, .CPY_ZP, .CPY_A:
 		compare(state, &state.iy, memory, opCodeInfo.addMode)
 	case .DEC_ZP, .DEC_ZPX, .DEC_A, .DEC_AX:
 		i: ^u8
@@ -718,11 +901,75 @@ emulate6502p :: proc(state: ^MOS6502, memory: []u8) -> int {
 		dec(state, &state.ix, memory, opCodeInfo.addMode)
 	case .DEY:
 		dec(state, &state.iy, memory, opCodeInfo.addMode)
+	case .EOR_IM, .EOR_ZP, .EOR_ZPX, .EOR_A, .EOR_AX, .EOR_AY, .EOR_IX, .EOR_IY:
+		eor(state, memory, opCodeInfo.addMode)
+	case .INC_ZP, .INC_ZPX, .INC_A, .INC_AX:
+		tmp: ^u8
+		inc(state, tmp, memory, opCodeInfo.addMode)
 	case .INX:
 		//inx(state)
 		inc(state, &state.ix, memory, opCodeInfo.addMode)
+	case .INY:
+		inc(state, &state.iy, memory, opCodeInfo.addMode)
+	case .JMP_A, .JMP_I:
+		jump(state, memory, opCodeInfo.addMode, false)
+	case .JSR:
+		jump(state, memory, opCodeInfo.addMode, true)
+	case .LDA_IM, .LDA_ZP, .LDA_ZPX, .LDA_A, .LDA_AX, .LDA_AY, .LDA_IX, .LDA_IY:
+		//lda(state, memory, opCodeInfo.addMode)
+		loadRegister(state, &state.a, memory, opCodeInfo.addMode)
+	case .LDX_IM, .LDX_ZP, .LDX_ZPY, .LDX_A, .LDX_AY:
+		loadRegister(state, &state.ix, memory, opCodeInfo.addMode)
+	case .LDY_IM, .LDY_ZP, .LDY_ZPX, .LDY_A, .LDY_AX:
+		loadRegister(state, &state.iy, memory, opCodeInfo.addMode)
+	case .LSR_ACC, .LSR_ZP, .LSR_ZPX, .LSR_A, .LSR_AX:
+		shift(state, memory, opCodeInfo.addMode, false, false)
+	case .NOP:
+	case .ORA_IM, .ORA_ZP, .ORA_ZPX, .ORA_A, .ORA_AX, .ORA_AY, .ORA_IX, .ORA_IY:
+		ora(state, memory, opCodeInfo.addMode)
+	case .PHA:
+		push8(state.a, state, getStack(memory))
+	case .PHP:
+		push8(state.status, state, getStack(memory))
+	case .PLA:
+		state.a = pop8(state, getStack(memory))
+	case .PLP:
+		state.status = pop8(state, getStack(memory))
+	case .ROL_ACC, .ROL_ZP, .ROL_ZPX, .ROL_A, .ROL_AX:
+		shift(state, memory, opCodeInfo.addMode, true, true)
+	case .ROR_ACC, .ROR_ZP, .ROR_ZPX, .ROR_A, .ROR_AX:
+		shift(state, memory, opCodeInfo.addMode, true, false)
+	case .RTI:
+		rti(state, memory)
+	case .RTS:
+		rts(state, memory)
+	case .SBC_IM, .SBC_ZP, .SBC_ZPX, .SBC_A, .SBC_AX, .SBC_AY, .SBC_IX, .SBC_IY:
+		sbc(state, memory, opCodeInfo.addMode)
+	case .SEC:
+		setFlag(state, CarryFlag)
+	case .SED:
+		setFlag(state, DecimalModeFlag)
+	case .SEI:
+		setFlag(state, InterruptDisable)
+	case .STA_ZP, .STA_ZPX, .STA_A, .STA_AX, .STA_AY, .STA_IX, .STA_IY:
+		store(state.a, state, memory, opCodeInfo.addMode)
+	case .STX_ZP, .STX_ZPY, .STX_A:
+		store(state.ix, state, memory, opCodeInfo.addMode)
+	case .STY_ZP, .STY_ZPX, .STY_A:
+		store(state.iy, state, memory, opCodeInfo.addMode)
 	case .TAX:
-		tax(state)
+		//tax(state)
+		transfer(&state.ix, &state.a, state)
+	case .TAY:
+		transfer(&state.iy, &state.a, state)
+	case .TSX:
+		transfer(&state.ix, &state.sp, state)
+	case .TXA:
+		transfer(&state.a, &state.ix, state)
+	case .TXS:
+		transfer(&state.sp, &state.ix, state)
+	case .TYA:
+		transfer(&state.a, &state.iy, state)
 	}
 
 	// Check if it is always +1 for a page boundary crossing
