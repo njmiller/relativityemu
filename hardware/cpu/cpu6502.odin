@@ -172,10 +172,10 @@ AddModeMap := map[OpCode]OpCodeInfo {
 	.AND_ZP = {3, .ZeroPage},
 	.AND_ZPX = {4, .ZeroPage_X},
 	.AND_A = {4, .Absolute},
-	.AND_AX = {4, .Absolute_X}, // + 1 if page crossed
-	.AND_AY = {4, .Absolute_Y}, // + 1 if page crossed
+	.AND_AX = {4, .Absolute_X},
+	.AND_AY = {4, .Absolute_Y},
 	.AND_IX = {6, .Indirect_X},
-	.AND_IY = {5, .Indirect_Y}, // + 1 if page crossed
+	.AND_IY = {5, .Indirect_Y},
 	.BCC = {2, .Relative},
 	.BCS = {2, .Relative},
 	.BEQ = {2, .Relative},
@@ -383,13 +383,23 @@ adc :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
 
 	m := getValue8(state, memory, addMode)
 
+	if state.status & DecimalModeFlag != 0 {
+		m = fromBCD(m)
+	}
+
 	value, cy := bits.overflowing_add(state.a, m)
-	value2, cy2 := bits.overflowing_add(state.a, state.status & 1)
+
+	carry := state.status & CarryFlag != 0 ? 1 : 0
+	value2, cy2 := bits.overflowing_add(state.a, carry)
 
 	state.status = setNegativeFlag(value2, state.status)
 	state.status = setZeroFlag(value2, state.status)
 	state.status = setOverflowFlag(state.a, value2, state.status)
 	state.status = cy | cy2 ? state.status | 1 : state.status &~ 1
+
+	if state.status & DecimalModeFlag != 0 {
+		value2 = toBCD(value2)
+	}
 
 	state.a = value2
 }
@@ -548,26 +558,6 @@ loadRegister :: proc(state: ^MOS6502, register: ^u8, memory: []u8, addMode: Addr
 	state.status = setNegativeFlag(register^, state.status)
 }
 
-/*
-lda :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
-	state.a = getValue8(state, memory, addMode)
-	state.status = setZeroFlag(state.a, state.status)
-	state.status = setNegativeFlag(state.a, state.status)
-}
-
-ldx :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
-	state.ix = getValue8(state, memory, addMode)
-	state.status = setZeroFlag(state.a, state.status)
-	state.status = setNegativeFlag(state.a, state.status)
-}
-
-ldy :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
-	state.iy = getValue8(state, memory, addMode)
-	state.status = setZeroFlag(state.a, state.status)
-	state.status = setNegativeFlag(state.a, state.status)
-}
-*/
-
 lsr :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
 	m := getValue8(state, memory, addMode)
 
@@ -612,16 +602,24 @@ rts :: proc(state: ^MOS6502, memory: []u8) {
 sbc :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
 	m := getValue8(state, memory, addMode)
 
+	if state.status & DecimalModeFlag != 0 {
+		m = fromBCD(m)
+	}
 	value, cy := bits.overflowing_sub(state.a, m)
 	//onemC := 1 - (state.status & 1)
-	onemC := 1 - ((state.status & CarryFlag) >> CarryBit)
+	carry := state.status & CarryFlag != 0 ? 0 : 1
+	//onemC := 1 - ((state.status & CarryFlag) >> CarryBit)
 
-	value2, cy2 := bits.overflowing_sub(state.a, onemC)
+	value2, cy2 := bits.overflowing_sub(value, carry)
 
 	state.status = setNegativeFlag(value2, state.status)
 	state.status = setZeroFlag(value2, state.status)
 	state.status = setOverflowFlag(state.a, value2, state.status)
 	state.status = (cy | cy2) ? state.status &~ 1 : state.status | 1
+
+	if state.status & DecimalModeFlag != 0 {
+		value2 = toBCD(value2)
+	}
 
 	state.a = value2
 }
@@ -649,17 +647,20 @@ transfer :: proc(dest: ^u8, init: ^u8, state: ^MOS6502) {
 	state.status = setNegativeFlag(dest^, state.status)
 }
 
+/*
 tax :: proc(state: ^MOS6502) {
 	state.ix = state.a
 	state.status = setZeroFlag(state.ix, state.status)
 	state.status = setNegativeFlag(state.ix, state.status)
 }
 
+
 inx :: proc(state: ^MOS6502) {
 	state.ix += 1
 	state.status = setZeroFlag(state.ix, state.status)
 	state.status = setNegativeFlag(state.ix, state.status)
 }
+*/
 
 getOffset :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) -> u16 {
 	switch addMode {
@@ -810,6 +811,26 @@ getHighLow :: proc(value: u16) -> (u8, u8) {
 	return high, low
 }
 
+// Routines to convert a BCD number to normal u8 values for addition and subtraction
+fromBCD :: proc(value: u8) -> u8 {
+	low4 := value & 0b0000_1111
+	high4 := (value & 0b1111_0000) >> 4
+
+	if low4 >= 10 || high4 >= 10 do log.error("Each digit in BCD can only be between 0 and 9")
+
+	return 10 * high4 + low4
+}
+
+toBCD :: proc(value: u8) -> u8 {
+
+	if value > 99 do log.error("BCD must be between 0 and 99.")
+
+	lowD: u8 = value % 10
+	highD: u8 = value / 10
+
+	return (highD << 4) | lowD
+}
+
 getCombined :: proc(high: u8, low: u8) -> u16 {return (u16(high) << 8) | u16(low)}
 
 getStack :: proc(memory: []u8) -> []u8 {return memory[0x0100:0x0200]}
@@ -925,6 +946,7 @@ emulate6502p :: proc(state: ^MOS6502, memory: []u8) -> int {
 	case .LSR_ACC, .LSR_ZP, .LSR_ZPX, .LSR_A, .LSR_AX:
 		shift(state, memory, opCodeInfo.addMode, false, false)
 	case .NOP:
+		nop()
 	case .ORA_IM, .ORA_ZP, .ORA_ZPX, .ORA_A, .ORA_AX, .ORA_AY, .ORA_IX, .ORA_IY:
 		ora(state, memory, opCodeInfo.addMode)
 	case .PHA:
