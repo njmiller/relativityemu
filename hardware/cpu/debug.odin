@@ -63,6 +63,7 @@ indirectYInstruction :: proc(text: string, value: u8) -> int {
 disassemble6502p :: proc(memory: []u8, pc: int) -> int {
 	opcode: OpCode = auto_cast memory[pc]
 
+	fmt.printf("PC: %02x ", pc)
 	switch opcode {
 	case .BRK:
 		return simpleInstruction("BRK")

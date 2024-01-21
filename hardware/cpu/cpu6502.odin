@@ -390,7 +390,7 @@ adc :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
 	value, cy := bits.overflowing_add(state.a, m)
 
 	carry := state.status & CarryFlag != 0 ? 1 : 0
-	value2, cy2 := bits.overflowing_add(state.a, carry)
+	value2, cy2 := bits.overflowing_add(value, carry)
 
 	state.status = setNegativeFlag(value2, state.status)
 	state.status = setZeroFlag(value2, state.status)
@@ -441,33 +441,22 @@ shift :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode, carry: boo
 	writeValue8(value, state, memory, addMode)
 }
 
-/*
-bcc :: proc(state: ^MOS6502, memory: []u8) {
-	offset := readImmediate8(state, memory)
-	if state.status & CarryFlag == 0 {
-		state.pc += int(offset)
-	}
-}
-
-bcs :: proc(state: ^MOS6502, memory: []u8) {
-	offset := readImmediate8(state, memory)
-	if state.status & CarryFlag != 0 {
-		state.pc += int(offset)
-	}
-}
-*/
-
 branch :: proc(state: ^MOS6502, memory: []u8, flag: u8, eq: bool) {
+	// Offset if from the end of the instruction so the way I increment everything
+	// should be fine
+
 	offset := readImmediate8(state, memory)
+	rel_offset: i8 = auto_cast offset // since offset is signed
+	// rel_offset := offset
 
 	if eq {
 		if state.status & flag == 0 {
-			state.pc += int(offset)
+			state.pc += int(rel_offset)
 			state.ec += 1
 		}
 	} else {
 		if state.status & flag != 0 {
-			state.pc += int(offset)
+			state.pc += int(rel_offset)
 			state.ec += 1
 		}
 	}
@@ -596,7 +585,10 @@ rts :: proc(state: ^MOS6502, memory: []u8) {
 	popR(&high, &low, state, getStack(memory))
 
 	pc := getCombined(high, low)
-	state.pc = int(pc)
+
+	// TODO: Check. Added one because I store location of next instruction - 1 on the stack
+	// so I must increment it
+	state.pc = int(pc) + 1
 }
 
 sbc :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
@@ -928,7 +920,6 @@ emulate6502p :: proc(state: ^MOS6502, memory: []u8) -> int {
 		tmp: ^u8
 		inc(state, tmp, memory, opCodeInfo.addMode)
 	case .INX:
-		//inx(state)
 		inc(state, &state.ix, memory, opCodeInfo.addMode)
 	case .INY:
 		inc(state, &state.iy, memory, opCodeInfo.addMode)
@@ -980,7 +971,6 @@ emulate6502p :: proc(state: ^MOS6502, memory: []u8) -> int {
 	case .STY_ZP, .STY_ZPX, .STY_A:
 		store(state.iy, state, memory, opCodeInfo.addMode)
 	case .TAX:
-		//tax(state)
 		transfer(&state.ix, &state.a, state)
 	case .TAY:
 		transfer(&state.iy, &state.a, state)
