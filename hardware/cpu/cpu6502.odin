@@ -4,6 +4,8 @@ import "core:fmt"
 import "core:log"
 import "core:math/bits"
 
+import "hardware:memory"
+
 OpCode :: enum u8 {
 	BRK     = 0x00,
 	ORA_IX  = 0x01,
@@ -337,49 +339,6 @@ MOS6502 :: struct {
 	ec:     int, // set for extra cycles than the default based on branch or page crossing
 }
 
-/*
-Bus :: struct {
-	cpu_vram: [2048]u8,
-}
-
-RAM: u16 : 0x0000
-RAM_MIRRORS_END: u16 : 0x1FFF
-PPU_REGISTERS: u16 : 0x2000
-PPU_REGISTERS_MIRRORS_END: u16 : 0x3FFF
-
-bus_mem_read :: proc(bus: ^Bus, addr: u16) -> u8 {
-
-	mem_val: u8
-	switch addr {
-	case RAM ..= RAM_MIRRORS_END:
-		mirror_down_addr := addr & 0b00000111_11111111
-		mem_val = bus.cpu_vram[mirror_down_addr]
-	case PPU_REGISTERS ..= PPU_REGISTERS_MIRRORS_END:
-		mirror_down_addr := addr & 0b00100000_00000111
-		fmt.println("PPU is not supported yet")
-		mem_val = 0
-	case:
-		fmt.println("Ignoring mem access at ", addr)
-		mem_val = 0
-	}
-	return mem_val
-}
-
-bus_mem_write :: proc(bus: ^Bus, addr: u16, data: u8) {
-
-	switch addr {
-	case RAM ..= RAM_MIRRORS_END:
-		mirror_down_addr := addr & 0b00000111_11111111
-		bus.cpu_vram[mirror_down_addr] = data
-	case PPU_REGISTERS ..= PPU_REGISTERS_MIRRORS_END:
-		mirror_down_addr := addr & 0b00100000_00000111
-		fmt.println("PPU is not supported yet")
-	case:
-		fmt.println("Ignoring mem write-access at", addr)
-	}
-}
-*/
-
 // Bits for the status byte
 ZeroFlag: u8 : 0b0000_0010
 NegativeFlag: u8 : 0b1000_0000
@@ -422,9 +381,9 @@ brk :: proc(state: ^MOS6502) {
 	state.status = state.status | BreakCommand
 }
 
-adc :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
+adc :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) {
 
-	m := getValue8(state, memory, addMode)
+	m := getValue8(state, bus, addMode)
 
 	if state.status & DecimalModeFlag != 0 {
 		m = fromBCD(m)
@@ -447,16 +406,22 @@ adc :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
 	state.a = value2
 }
 
-and :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
-	m := getValue8(state, memory, addMode)
+and :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) {
+	m := getValue8(state, bus, addMode)
 
 	state.a &= m
 	state.status = setZeroFlag(state.a, state.status)
 	state.status = setNegativeFlag(state.a, state.status)
 }
 
-shift :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode, carry: bool, left: bool) {
-	m := getValue8(state, memory, addMode)
+shift :: proc(
+	state: ^MOS6502,
+	bus: ^memory.Bus,
+	addMode: AddressingMode,
+	carry: bool,
+	left: bool,
+) {
+	m := getValue8(state, bus, addMode)
 
 	value: u8
 	rollbit: uint
@@ -481,14 +446,14 @@ shift :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode, carry: boo
 	state.status = (bit & m) != 0 ? state.status | CarryFlag : state.status &~ CarryFlag
 	state.status = setZeroFlag(value, state.status)
 	state.status = setNegativeFlag(value, state.status)
-	writeValue8(value, state, memory, addMode)
+	writeValue8(value, state, bus, addMode)
 }
 
-branch :: proc(state: ^MOS6502, memory: []u8, flag: u8, eq: bool) {
+branch :: proc(state: ^MOS6502, bus: ^memory.Bus, flag: u8, eq: bool) {
 	// Offset if from the end of the instruction so the way I increment everything
 	// should be fine
 
-	offset := readImmediate8(state, memory)
+	offset := readImmediate8(state, bus)
 	rel_offset: i8 = auto_cast offset // since offset is signed
 	// rel_offset := offset
 
@@ -505,8 +470,8 @@ branch :: proc(state: ^MOS6502, memory: []u8, flag: u8, eq: bool) {
 	}
 }
 
-bit :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
-	value := state.a & getValue8(state, memory, addMode)
+bit :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) {
+	value := state.a & getValue8(state, bus, addMode)
 	state.status = setZeroFlag(value, state.status)
 
 	//bit 6 is set to overflow flag
@@ -522,15 +487,15 @@ clear :: proc(state: ^MOS6502, flag: u8) {
 	state.status = state.status &~ flag
 }
 
-compare :: proc(state: ^MOS6502, register: ^u8, memory: []u8, addMode: AddressingMode) {
-	value := register^ - getValue8(state, memory, addMode)
+compare :: proc(state: ^MOS6502, register: ^u8, bus: ^memory.Bus, addMode: AddressingMode) {
+	value := register^ - getValue8(state, bus, addMode)
 
 	state.status = value >= 0 ? state.status | CarryFlag : state.status &~ CarryFlag
 	state.status = setZeroFlag(value, state.status)
 	state.status = setNegativeFlag(value, state.status)
 }
 
-dec :: proc(state: ^MOS6502, register: ^u8, memory: []u8, addMode: AddressingMode) {
+dec :: proc(state: ^MOS6502, register: ^u8, bus: ^memory.Bus, addMode: AddressingMode) {
 	value: u8
 
 	// Different branches for when decrementing x/y-registers and memory locations
@@ -538,22 +503,22 @@ dec :: proc(state: ^MOS6502, register: ^u8, memory: []u8, addMode: AddressingMod
 		register^ -= 1
 		value = register^
 	} else {
-		value = getValue8(state, memory, addMode) - 1
-		writeValue8(value, state, memory, addMode)
+		value = getValue8(state, bus, addMode) - 1
+		writeValue8(value, state, bus, addMode)
 	}
 
 	state.status = setZeroFlag(value, state.status)
 	state.status = setNegativeFlag(value, state.status)
 }
 
-eor :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
-	state.a = state.a ~ getValue8(state, memory, addMode)
+eor :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) {
+	state.a = state.a ~ getValue8(state, bus, addMode)
 
 	state.status = setZeroFlag(state.a, state.status)
 	state.status = setNegativeFlag(state.a, state.status)
 }
 
-inc :: proc(state: ^MOS6502, register: ^u8, memory: []u8, addMode: AddressingMode) {
+inc :: proc(state: ^MOS6502, register: ^u8, bus: ^memory.Bus, addMode: AddressingMode) {
 	value: u8
 
 	// Different branches for when decrementing x/y-registers and memory locations
@@ -561,16 +526,16 @@ inc :: proc(state: ^MOS6502, register: ^u8, memory: []u8, addMode: AddressingMod
 		register^ += 1
 		value = register^
 	} else {
-		value = getValue8(state, memory, addMode) + 1
-		writeValue8(value, state, memory, addMode)
+		value = getValue8(state, bus, addMode) + 1
+		writeValue8(value, state, bus, addMode)
 	}
 
 	state.status = setZeroFlag(value, state.status)
 	state.status = setNegativeFlag(value, state.status)
 }
 
-jump :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode, sub: bool) {
-	value := getOffset(state, memory, addMode)
+jump :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode, sub: bool) {
+	value := getOffset(state, bus, addMode)
 
 	// If jump to subroutine, push the address (minus one) of the return point on the stack
 	// TODO: Says it pushes address-1 of the next operation
@@ -578,20 +543,20 @@ jump :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode, sub: bool) 
 		// pc should already be location of next instruction
 		pc_curr := u16(state.pc - 1)
 		high, low := getHighLow(pc_curr)
-		pushR(high, low, state, getStack(memory))
+		pushR(high, low, state, bus)
 	}
 
 	state.pc = int(value)
 }
 
-loadRegister :: proc(state: ^MOS6502, register: ^u8, memory: []u8, addMode: AddressingMode) {
-	register^ = getValue8(state, memory, addMode)
+loadRegister :: proc(state: ^MOS6502, register: ^u8, bus: ^memory.Bus, addMode: AddressingMode) {
+	register^ = getValue8(state, bus, addMode)
 	state.status = setZeroFlag(register^, state.status)
 	state.status = setNegativeFlag(register^, state.status)
 }
 
-lsr :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
-	m := getValue8(state, memory, addMode)
+lsr :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) {
+	m := getValue8(state, bus, addMode)
 
 	value := m >> 1
 
@@ -600,26 +565,26 @@ lsr :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
 	state.status = setZeroFlag(value, state.status)
 	state.status = setNegativeFlag(value, state.status)
 
-	writeValue8(value, state, memory, addMode)
+	writeValue8(value, state, bus, addMode)
 
 }
 
 nop :: proc() {}
 
-ora :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
-	state.a = getValue8(state, memory, addMode) | state.a
+ora :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) {
+	state.a = getValue8(state, bus, addMode) | state.a
 
 	state.status = setZeroFlag(state.a, state.status)
 	state.status = setNegativeFlag(state.a, state.status)
 }
 
-rti :: proc(state: ^MOS6502, memory: []u8) {
+rti :: proc(state: ^MOS6502, bus: ^memory.Bus) {
 	log.error("RTI Not Implemented")
 }
 
-rts :: proc(state: ^MOS6502, memory: []u8) {
+rts :: proc(state: ^MOS6502, bus: ^memory.Bus) {
 	high, low: u8
-	popR(&high, &low, state, getStack(memory))
+	popR(&high, &low, state, bus)
 
 	pc := getCombined(high, low)
 
@@ -628,8 +593,8 @@ rts :: proc(state: ^MOS6502, memory: []u8) {
 	state.pc = int(pc) + 1
 }
 
-sbc :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
-	m := getValue8(state, memory, addMode)
+sbc :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) {
+	m := getValue8(state, bus, addMode)
 
 	if state.status & DecimalModeFlag != 0 {
 		m = fromBCD(m)
@@ -657,9 +622,10 @@ setFlag :: proc(state: ^MOS6502, flag: u8) {
 	state.status = state.status | flag
 }
 
-store :: proc(register: u8, state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
-	offset := getOffset(state, memory, addMode)
-	memory[offset] = register
+store :: proc(register: u8, state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) {
+	offset := getOffset(state, bus, addMode)
+	// memory[offset] = register
+	bus.write(bus, offset, register)
 }
 
 transfer :: proc(dest: ^u8, init: ^u8, state: ^MOS6502) {
@@ -669,7 +635,7 @@ transfer :: proc(dest: ^u8, init: ^u8, state: ^MOS6502) {
 	state.status = setNegativeFlag(dest^, state.status)
 }
 
-getOffset :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) -> u16 {
+getOffset :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) -> u16 {
 	switch addMode {
 	case .Accumulator:
 		log.error("Can't get offset for accumulator")
@@ -678,33 +644,39 @@ getOffset :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) -> u16
 	case .Immediate:
 		log.error("Call getValue8 for Immediate")
 	case .Absolute:
-		return readImmediate16(state, memory)
+		return readImmediate16(state, bus)
 	case .Absolute_X:
-		offset := readImmediate16(state, memory)
+		offset := readImmediate16(state, bus)
 		return u16(state.ix) + offset
 	case .Absolute_Y:
-		offset := readImmediate16(state, memory)
+		offset := readImmediate16(state, bus)
 		return u16(state.iy) + offset
 	case .ZeroPage:
-		return u16(readImmediate8(state, memory))
+		return u16(readImmediate8(state, bus))
 	case .ZeroPage_X:
-		return u16(readImmediate8(state, memory) + state.ix)
+		return u16(readImmediate8(state, bus) + state.ix)
 	case .ZeroPage_Y:
-		return u16(readImmediate8(state, memory) + state.iy)
+		return u16(readImmediate8(state, bus) + state.iy)
 	case .Indirect:
-		offset1 := readImmediate16(state, memory)
-		low := memory[offset1]
-		high := memory[offset1 + 1]
+		offset1 := readImmediate16(state, bus)
+		// low := memory[offset1]
+		// high := memory[offset1 + 1]
+		low := bus.read(bus, offset1)
+		high := bus.read(bus, offset1 + 1)
 		return getCombined(high, low)
 	case .Indirect_X:
-		addr := state.ix + readImmediate8(state, memory)
-		low := memory[addr]
-		high := memory[addr + 1]
+		addr := state.ix + readImmediate8(state, bus)
+		// low := memory[addr]
+		// high := memory[addr + 1]
+		low := bus.read(bus, auto_cast addr)
+		high := bus.read(bus, auto_cast addr + 1)
 		return getCombined(high, low)
 	case .Indirect_Y:
-		base := readImmediate8(state, memory)
-		low := memory[base]
-		high := memory[base + 1]
+		base := readImmediate8(state, bus)
+		// low := memory[base]
+		// high := memory[base + 1]
+		low := bus.read(bus, auto_cast base)
+		high := bus.read(bus, auto_cast base + 1)
 		return getCombined(high, low) + u16(state.iy)
 	case .NoneAddressing:
 		log.error("Trying to read operand with NoneAddressing")
@@ -715,41 +687,58 @@ getOffset :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) -> u16
 	return 0
 }
 
-getValue8 :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) -> u8 {
+getValue8 :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) -> u8 {
 
 	switch addMode {
 	case .Accumulator:
 		return state.a
 	case .Relative:
-		return readImmediate8(state, memory)
+		return readImmediate8(state, bus)
 	case .Immediate:
-		return readImmediate8(state, memory)
+		return readImmediate8(state, bus)
 	case .Absolute:
-		return memory[readImmediate16(state, memory)]
+		// return memory[readImmediate16(state, memory)]
+		return bus.read(bus, readImmediate16(state, bus))
 	case .Absolute_X:
-		offset := readImmediate16(state, memory)
-		return memory[u16(state.ix) + offset]
+		offset := readImmediate16(state, bus)
+		addr := u16(state.ix) + offset
+		// return memory[u16(state.ix) + offset]
+		return bus.read(bus, addr)
 	case .Absolute_Y:
-		offset := readImmediate16(state, memory)
-		return memory[u16(state.iy) + offset]
+		offset := readImmediate16(state, bus)
+		addr := u16(state.iy) + offset
+		// return memory[u16(state.iy) + offset]
+		return bus.read(bus, addr)
 	case .ZeroPage:
-		return memory[readImmediate8(state, memory)]
+		// return memory[readImmediate8(state, memory)]
+		addr := readImmediate8(state, bus)
+		return bus.read(bus, auto_cast addr)
 	case .ZeroPage_X:
-		return memory[readImmediate8(state, memory) + state.ix]
+		addr := readImmediate8(state, bus) + state.ix
+		// return memory[readImmediate8(state, memory) + state.ix]
+		return bus.read(bus, auto_cast addr)
 	case .ZeroPage_Y:
-		return memory[readImmediate8(state, memory) + state.iy]
+		addr := readImmediate8(state, bus) + state.iy
+		// return memory[readImmediate8(state, memory) + state.iy]
+		return bus.read(bus, auto_cast addr)
 	case .Indirect:
 		log.error("Should never be trying to get memory value with Indirect addressing mode")
 	case .Indirect_X:
-		addr := state.ix + readImmediate8(state, memory)
-		low := memory[addr]
-		high := memory[addr + 1]
-		return memory[getCombined(high, low)]
+		addr := state.ix + readImmediate8(state, bus)
+		//low := memory[addr]
+		//high := memory[addr + 1]
+		low := bus.read(bus, auto_cast addr)
+		high := bus.read(bus, auto_cast addr + 1)
+		//return memory[getCombined(high, low)]
+		return bus.read(bus, getCombined(high, low))
 	case .Indirect_Y:
-		base := readImmediate8(state, memory)
-		low := memory[base]
-		high := memory[base + 1]
-		return memory[getCombined(high, low) + u16(state.iy)]
+		base := readImmediate8(state, bus)
+		low := bus.read(bus, auto_cast base)
+		high := bus.read(bus, auto_cast base + 1)
+		//high := memory[base + 1]
+		addr := getCombined(high, low) + u16(state.iy)
+		// return memory[getCombined(high, low) + u16(state.iy)]
+		return bus.read(bus, addr)
 	case .NoneAddressing:
 		log.error("Trying to read operand with NoneAddressing")
 		return 0
@@ -762,52 +751,70 @@ getValue8 :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) -> u8 
 // Fome some instructions that act straight on the memory locations (i.e. ASL). We
 // undo the increment of the program counter and then read in the offset again in order
 // to figure out where to store the value
-writeValue8 :: proc(value: u8, state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
+writeValue8 :: proc(value: u8, state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) {
 	#partial switch addMode {
 	case .Accumulator:
 		state.a = value
 	case .Immediate:
-		writeImmediate8(value, state, memory)
+		writeImmediate8(value, state, bus)
 	case .ZeroPage:
 		state.pc -= 1
-		offset := readImmediate8(state, memory)
-		memory[offset] = value
+		offset := readImmediate8(state, bus)
+		// memory[offset] = value
+		bus.write(bus, auto_cast offset, value)
 	case .ZeroPage_X:
 		state.pc -= 1
-		offset := readImmediate8(state, memory) + state.ix
-		memory[offset] = value
+		offset := readImmediate8(state, bus) + state.ix
+		// memory[offset] = value
+		bus.write(bus, auto_cast offset, value)
 	case .Absolute:
 		state.pc -= 2
-		offset := readImmediate16(state, memory)
-		memory[offset] = value
+		offset := readImmediate16(state, bus)
+		// memory[offset] = value
+		bus.write(bus, offset, value)
 	case .Absolute_X:
 		state.pc -= 2
-		offset := readImmediate16(state, memory) + u16(state.ix)
-		memory[offset] = value
+		offset := readImmediate16(state, bus) + u16(state.ix)
+		// memory[offset] = value
+		bus.write(bus, offset, value)
 	case:
 		log.error("Trying to write data with unimplemented addressing mode.")
 	}
 }
 
-push8 :: proc(reg1: u8, state: ^MOS6502, stack: []u8) {
-	stack[state.sp - 1] = reg1
+// The stack containes the addresses from 0x0100 to 0x01FF and the stack pointer runs from 0 to FF
+// so you need to add 0x0100 to the stack pointer value to get the address on the stack
+
+// TODO: I changed code to store at current location of stack pointer. Check to make sure it is okay.
+push8 :: proc(reg1: u8, state: ^MOS6502, bus: ^memory.Bus) {
+	addr := u16(state.sp) + 0x0100
+	// stack[state.sp - 1] = reg1
+	bus.write(bus, addr, reg1)
 	state.sp -= 1
 }
 
-pop8 :: proc(state: ^MOS6502, stack: []u8) -> u8 {
+pop8 :: proc(state: ^MOS6502, bus: ^memory.Bus) -> u8 {
+	addr := u16(state.sp + 1) + 0x0100
 	state.sp += 1
-	return stack[state.sp - 1]
+	// return stack[state.sp - 1]
+	return bus.read(bus, addr)
 }
 
-pushR :: proc(reg1: u8, reg2: u8, state: ^MOS6502, stack: []u8) {
-	stack[state.sp - 2] = reg2
-	stack[state.sp - 1] = reg1
+pushR :: proc(reg1: u8, reg2: u8, state: ^MOS6502, bus: ^memory.Bus) {
+	addr := u16(state.sp) + 0x0100
+	bus.write(bus, addr - 1, reg2)
+	bus.write(bus, addr, reg1)
+	//stack[state.sp - 2] = reg2
+	//stack[state.sp - 1] = reg1
 	state.sp -= 2
 }
 
-popR :: proc(reg1: ^u8, reg2: ^u8, state: ^MOS6502, stack: []u8) {
-	reg2^ = stack[state.sp]
-	reg1^ = stack[state.sp + 1]
+popR :: proc(reg1: ^u8, reg2: ^u8, state: ^MOS6502, bus: ^memory.Bus) {
+	addr := u16(state.sp) + 0x0100
+	reg2^ = bus.read(bus, addr + 1)
+	reg1^ = bus.read(bus, addr + 2)
+	// reg2^ = stack[state.sp]
+	// reg1^ = stack[state.sp + 1]
 	state.sp += 2
 }
 
@@ -842,22 +849,30 @@ getCombined :: proc(high: u8, low: u8) -> u16 {return (u16(high) << 8) | u16(low
 
 getStack :: proc(memory: []u8) -> []u8 {return memory[0x0100:0x0200]}
 
-readImmediate8 :: proc(state: ^MOS6502, memory: []u8) -> u8 {
+readImmediate8 :: proc(state: ^MOS6502, bus: ^memory.Bus) -> u8 {
+	data := bus.read(bus, auto_cast state.pc)
 	state.pc += 1
-	return memory[state.pc - 1]
+	//return memory[state.pc - 1]
+	return data
 }
 
-writeImmediate8 :: proc(value: u8, state: ^MOS6502, memory: []u8) {
-	memory[state.pc - 1] = value
+writeImmediate8 :: proc(value: u8, state: ^MOS6502, bus: ^memory.Bus) {
+	bus.write(bus, auto_cast (state.pc - 1), value)
+	//memory[state.pc - 1] = value
 }
 
-readImmediate16 :: proc(state: ^MOS6502, memory: []u8) -> u16 {
+readImmediate16 :: proc(state: ^MOS6502, bus: ^memory.Bus) -> u16 {
+	low := bus.read(bus, auto_cast state.pc)
+	high := bus.read(bus, auto_cast state.pc + 1)
+	// data_out: u16 = auto_cast (cast(^u16le)&data)^
 	state.pc += 2
-	return auto_cast (cast(^u16le)&memory[state.pc - 2])^
+
+	return getCombined(high, low)
+	//return auto_cast (cast(^u16le)&memory[state.pc - 2])^
 }
 
-emulate6502p :: proc(state: ^MOS6502, memory: []u8) -> int {
-	opcode: OpCode = auto_cast readImmediate8(state, memory)
+emulate6502p :: proc(state: ^MOS6502, bus: ^memory.Bus) -> int {
+	opcode: OpCode = auto_cast readImmediate8(state, bus)
 
 	//Page boundary
 	state.ec = 0
@@ -869,29 +884,29 @@ emulate6502p :: proc(state: ^MOS6502, memory: []u8) -> int {
 	case .BRK:
 		brk(state)
 	case .ADC_IM, .ADC_ZP, .ADC_ZPX, .ADC_A, .ADC_AX, .ADC_AY, .ADC_IX, .ADC_IY:
-		adc(state, memory, opCodeInfo.addMode)
+		adc(state, bus, opCodeInfo.addMode)
 	case .AND_IM, .AND_ZP, .AND_ZPX, .AND_A, .AND_AX, .AND_AY, .AND_IX, .AND_IY:
-		and(state, memory, opCodeInfo.addMode)
+		and(state, bus, opCodeInfo.addMode)
 	case .ASL_ACC, .ASL_ZP, .ASL_ZPX, .ASL_A, .ASL_AX:
-		shift(state, memory, opCodeInfo.addMode, false, true)
+		shift(state, bus, opCodeInfo.addMode, false, true)
 	case .BCC:
-		branch(state, memory, CarryFlag, true)
+		branch(state, bus, CarryFlag, true)
 	case .BCS:
-		branch(state, memory, CarryFlag, false)
+		branch(state, bus, CarryFlag, false)
 	case .BEQ:
-		branch(state, memory, ZeroFlag, false)
+		branch(state, bus, ZeroFlag, false)
 	case .BIT_A, .BIT_ZP:
-		bit(state, memory, opCodeInfo.addMode)
+		bit(state, bus, opCodeInfo.addMode)
 	case .BMI:
-		branch(state, memory, NegativeFlag, false)
+		branch(state, bus, NegativeFlag, false)
 	case .BNE:
-		branch(state, memory, ZeroFlag, true)
+		branch(state, bus, ZeroFlag, true)
 	case .BPL:
-		branch(state, memory, NegativeFlag, true)
+		branch(state, bus, NegativeFlag, true)
 	case .BVC:
-		branch(state, memory, OverflowFlag, true)
+		branch(state, bus, OverflowFlag, true)
 	case .BVS:
-		branch(state, memory, OverflowFlag, false)
+		branch(state, bus, OverflowFlag, false)
 	case .CLC:
 		clear(state, CarryFlag)
 	case .CLD:
@@ -901,61 +916,61 @@ emulate6502p :: proc(state: ^MOS6502, memory: []u8) -> int {
 	case .CLV:
 		clear(state, OverflowFlag)
 	case .CMP_IM, .CMP_ZP, .CMP_ZPX, .CMP_A, .CMP_AX, .CMP_AY, .CMP_IX, .CMP_IY:
-		compare(state, &state.a, memory, opCodeInfo.addMode)
+		compare(state, &state.a, bus, opCodeInfo.addMode)
 	case .CPX_IM, .CPX_ZP, .CPX_A:
-		compare(state, &state.ix, memory, opCodeInfo.addMode)
+		compare(state, &state.ix, bus, opCodeInfo.addMode)
 	case .CPY_IM, .CPY_ZP, .CPY_A:
-		compare(state, &state.iy, memory, opCodeInfo.addMode)
+		compare(state, &state.iy, bus, opCodeInfo.addMode)
 	case .DEC_ZP, .DEC_ZPX, .DEC_A, .DEC_AX:
 		i: ^u8
-		dec(state, i, memory, opCodeInfo.addMode)
+		dec(state, i, bus, opCodeInfo.addMode)
 	case .DEX:
-		dec(state, &state.ix, memory, opCodeInfo.addMode)
+		dec(state, &state.ix, bus, opCodeInfo.addMode)
 	case .DEY:
-		dec(state, &state.iy, memory, opCodeInfo.addMode)
+		dec(state, &state.iy, bus, opCodeInfo.addMode)
 	case .EOR_IM, .EOR_ZP, .EOR_ZPX, .EOR_A, .EOR_AX, .EOR_AY, .EOR_IX, .EOR_IY:
-		eor(state, memory, opCodeInfo.addMode)
+		eor(state, bus, opCodeInfo.addMode)
 	case .INC_ZP, .INC_ZPX, .INC_A, .INC_AX:
 		tmp: ^u8
-		inc(state, tmp, memory, opCodeInfo.addMode)
+		inc(state, tmp, bus, opCodeInfo.addMode)
 	case .INX:
-		inc(state, &state.ix, memory, opCodeInfo.addMode)
+		inc(state, &state.ix, bus, opCodeInfo.addMode)
 	case .INY:
-		inc(state, &state.iy, memory, opCodeInfo.addMode)
+		inc(state, &state.iy, bus, opCodeInfo.addMode)
 	case .JMP_A, .JMP_I:
-		jump(state, memory, opCodeInfo.addMode, false)
+		jump(state, bus, opCodeInfo.addMode, false)
 	case .JSR:
-		jump(state, memory, opCodeInfo.addMode, true)
+		jump(state, bus, opCodeInfo.addMode, true)
 	case .LDA_IM, .LDA_ZP, .LDA_ZPX, .LDA_A, .LDA_AX, .LDA_AY, .LDA_IX, .LDA_IY:
-		loadRegister(state, &state.a, memory, opCodeInfo.addMode)
+		loadRegister(state, &state.a, bus, opCodeInfo.addMode)
 	case .LDX_IM, .LDX_ZP, .LDX_ZPY, .LDX_A, .LDX_AY:
-		loadRegister(state, &state.ix, memory, opCodeInfo.addMode)
+		loadRegister(state, &state.ix, bus, opCodeInfo.addMode)
 	case .LDY_IM, .LDY_ZP, .LDY_ZPX, .LDY_A, .LDY_AX:
-		loadRegister(state, &state.iy, memory, opCodeInfo.addMode)
+		loadRegister(state, &state.iy, bus, opCodeInfo.addMode)
 	case .LSR_ACC, .LSR_ZP, .LSR_ZPX, .LSR_A, .LSR_AX:
-		shift(state, memory, opCodeInfo.addMode, false, false)
+		shift(state, bus, opCodeInfo.addMode, false, false)
 	case .NOP:
 		nop()
 	case .ORA_IM, .ORA_ZP, .ORA_ZPX, .ORA_A, .ORA_AX, .ORA_AY, .ORA_IX, .ORA_IY:
-		ora(state, memory, opCodeInfo.addMode)
+		ora(state, bus, opCodeInfo.addMode)
 	case .PHA:
-		push8(state.a, state, getStack(memory))
+		push8(state.a, state, bus)
 	case .PHP:
-		push8(state.status, state, getStack(memory))
+		push8(state.status, state, bus)
 	case .PLA:
-		state.a = pop8(state, getStack(memory))
+		state.a = pop8(state, bus)
 	case .PLP:
-		state.status = pop8(state, getStack(memory))
+		state.status = pop8(state, bus)
 	case .ROL_ACC, .ROL_ZP, .ROL_ZPX, .ROL_A, .ROL_AX:
-		shift(state, memory, opCodeInfo.addMode, true, true)
+		shift(state, bus, opCodeInfo.addMode, true, true)
 	case .ROR_ACC, .ROR_ZP, .ROR_ZPX, .ROR_A, .ROR_AX:
-		shift(state, memory, opCodeInfo.addMode, true, false)
+		shift(state, bus, opCodeInfo.addMode, true, false)
 	case .RTI:
-		rti(state, memory)
+		rti(state, bus)
 	case .RTS:
-		rts(state, memory)
+		rts(state, bus)
 	case .SBC_IM, .SBC_ZP, .SBC_ZPX, .SBC_A, .SBC_AX, .SBC_AY, .SBC_IX, .SBC_IY:
-		sbc(state, memory, opCodeInfo.addMode)
+		sbc(state, bus, opCodeInfo.addMode)
 	case .SEC:
 		setFlag(state, CarryFlag)
 	case .SED:
@@ -963,11 +978,11 @@ emulate6502p :: proc(state: ^MOS6502, memory: []u8) -> int {
 	case .SEI:
 		setFlag(state, InterruptDisable)
 	case .STA_ZP, .STA_ZPX, .STA_A, .STA_AX, .STA_AY, .STA_IX, .STA_IY:
-		store(state.a, state, memory, opCodeInfo.addMode)
+		store(state.a, state, bus, opCodeInfo.addMode)
 	case .STX_ZP, .STX_ZPY, .STX_A:
-		store(state.ix, state, memory, opCodeInfo.addMode)
+		store(state.ix, state, bus, opCodeInfo.addMode)
 	case .STY_ZP, .STY_ZPX, .STY_A:
-		store(state.iy, state, memory, opCodeInfo.addMode)
+		store(state.iy, state, bus, opCodeInfo.addMode)
 	case .TAX:
 		transfer(&state.ix, &state.a, state)
 	case .TAY:

@@ -105,13 +105,13 @@ run :: proc(nes: ^system.NES) {
 	for !rl.WindowShouldClose() {
 
 		// Read user input and write it to mem[0xFF]
-		handle_input(nes.memory)
+		handle_input(nes.bus.cpu_vram[:])
 
 		// update mem[0xFE] with new random number
-		nes.memory[0xFE] = auto_cast (0xFF & rand.uint32())
+		nes.bus.cpu_vram[0xFE] = auto_cast (0xFF & rand.uint32())
 
 		// read mem mapped screen state
-		do_update = read_screen_state(nes.memory[0x0200:0x0600], screen_state)
+		do_update = read_screen_state(nes.bus.cpu_vram[0x0200:0x0600], screen_state)
 
 		// render screen state
 		if do_update {
@@ -123,21 +123,23 @@ run :: proc(nes: ^system.NES) {
 
 		}
 
-		//fmt.println("AAA:", nes.cpu6502.pc, nes.memory[nes.cpu6502.pc])
-		//cpu.disassemble6502p(nes.memory, nes.cpu6502.pc)
-		totCycles += cpu.emulate6502p(&nes.cpu6502, nes.memory)
+		// fmt.println("AAA:", nes.cpu6502.pc, nes.bus.cpu_vram[nes.cpu6502.pc])
+		// cpu.disassemble6502p(nes.bus.cpu_vram[:], nes.cpu6502.pc)
+		totCycles += cpu.emulate6502p(&nes.cpu6502, &nes.bus)
 
-
+		//fmt.println("STACK:", nes.bus.cpu_vram[0x01C0:0x0200])
 		time.accurate_sleep(70000)
-		if nes.memory[nes.cpu6502.pc] == 0 do break
+		if nes.bus.cpu_vram[nes.cpu6502.pc] == 0 do break
 	}
 }
+
 
 debug6502 :: proc() {
 	source, success := os.read_entire_file_from_filename(
 		"C:/dev/6502_65C02_functional_tests/bin_files/6502_functional_test.bin",
 	)
 
+	/*
 	memory: []u8
 	state: cpu.MOS6502
 	ncycles: int
@@ -147,6 +149,7 @@ debug6502 :: proc() {
 	for {
 		ncycles = cpu.emulate6502p(&state, memory)
 	}
+	*/
 }
 
 test_snake_game :: proc() {
@@ -468,7 +471,8 @@ test_snake_game :: proc() {
 
 	sw: time.Stopwatch
 
-	nes_state: system.NES
+	// nes_state: system.NES
+	nes_state := system.init_nes()
 
 	rl.InitWindow(320, 320, "Odin NES")
 	defer rl.CloseWindow()
@@ -476,9 +480,9 @@ test_snake_game :: proc() {
 	rl.SetTargetFPS(60)
 
 
-	nes_state.memory = make([]u8, 0xFFFF)
+	//nes_state.memory = make([]u8, 0xFFFF)
 
-	copy(nes_state.memory[0x0600:], game_code[:])
+	copy(nes_state.bus.cpu_vram[0x0600:], game_code[:])
 
 	nes_state.cpu6502.pc = 0x0600
 

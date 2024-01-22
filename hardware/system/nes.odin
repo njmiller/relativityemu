@@ -3,9 +3,7 @@ package system
 import "core:fmt"
 
 import "hardware:cpu"
-
-ReadFn :: #type proc(bus: ^Bus, addr: u16) -> u8
-WriteFn :: #type proc(bus: ^Bus, addr: u16, data: u8)
+import "hardware:memory"
 
 Mirroring :: enum {
 	VERTICAL,
@@ -21,10 +19,9 @@ Rom :: struct {
 }
 
 Bus :: struct {
-	cpu_vram: [2048]u8,
-	rom:      Rom,
-	read8:    ReadFn,
-	write8:   WriteFn,
+	using bus: memory.Bus,
+	cpu_vram:  [2048]u8,
+	rom:       Rom,
 }
 
 NES :: struct {
@@ -38,9 +35,10 @@ RAM_MIRRORS_END: u16 : 0x1FFF
 PPU_REGISTERS: u16 : 0x2000
 PPU_REGISTERS_MIRRORS_END: u16 : 0x3FFF
 
-bus_mem_read :: proc(bus: ^Bus, addr: u16) -> u8 {
-
+bus_mem_read :: proc(bus: ^memory.Bus, addr: u16) -> u8 {
+	bus := cast(^Bus)bus
 	mem_val: u8
+	/*
 	switch addr {
 	case RAM ..= RAM_MIRRORS_END:
 		mirror_down_addr := addr & 0b00000111_11111111
@@ -53,11 +51,14 @@ bus_mem_read :: proc(bus: ^Bus, addr: u16) -> u8 {
 		fmt.println("Ignoring mem access at ", addr)
 		mem_val = 0
 	}
+    */
+	mem_val = bus.cpu_vram[addr]
 	return mem_val
 }
 
-bus_mem_write :: proc(bus: ^Bus, addr: u16, data: u8) {
-
+bus_mem_write :: proc(bus: ^memory.Bus, addr: u16, data: u8) {
+	bus := cast(^Bus)bus
+	/*
 	switch addr {
 	case RAM ..= RAM_MIRRORS_END:
 		mirror_down_addr := addr & 0b00000111_11111111
@@ -67,15 +68,18 @@ bus_mem_write :: proc(bus: ^Bus, addr: u16, data: u8) {
 		fmt.println("PPU is not supported yet")
 	case:
 		fmt.println("Ignoring mem write-access at", addr)
-	}
+	}*/
+	bus.cpu_vram[addr] = data
 }
 
 init_nes :: proc() -> NES {
 	nes := NES{}
 
 	// Set up the bus read/write functions
-	nes.bus.read8 = bus_mem_read
-	nes.bus.write8 = bus_mem_write
+	nes.bus.read = bus_mem_read
+	nes.bus.write = bus_mem_write
+
+	nes.cpu6502.sp = 0xFF
 
 	return nes
 }
