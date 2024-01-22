@@ -337,6 +337,49 @@ MOS6502 :: struct {
 	ec:     int, // set for extra cycles than the default based on branch or page crossing
 }
 
+/*
+Bus :: struct {
+	cpu_vram: [2048]u8,
+}
+
+RAM: u16 : 0x0000
+RAM_MIRRORS_END: u16 : 0x1FFF
+PPU_REGISTERS: u16 : 0x2000
+PPU_REGISTERS_MIRRORS_END: u16 : 0x3FFF
+
+bus_mem_read :: proc(bus: ^Bus, addr: u16) -> u8 {
+
+	mem_val: u8
+	switch addr {
+	case RAM ..= RAM_MIRRORS_END:
+		mirror_down_addr := addr & 0b00000111_11111111
+		mem_val = bus.cpu_vram[mirror_down_addr]
+	case PPU_REGISTERS ..= PPU_REGISTERS_MIRRORS_END:
+		mirror_down_addr := addr & 0b00100000_00000111
+		fmt.println("PPU is not supported yet")
+		mem_val = 0
+	case:
+		fmt.println("Ignoring mem access at ", addr)
+		mem_val = 0
+	}
+	return mem_val
+}
+
+bus_mem_write :: proc(bus: ^Bus, addr: u16, data: u8) {
+
+	switch addr {
+	case RAM ..= RAM_MIRRORS_END:
+		mirror_down_addr := addr & 0b00000111_11111111
+		bus.cpu_vram[mirror_down_addr] = data
+	case PPU_REGISTERS ..= PPU_REGISTERS_MIRRORS_END:
+		mirror_down_addr := addr & 0b00100000_00000111
+		fmt.println("PPU is not supported yet")
+	case:
+		fmt.println("Ignoring mem write-access at", addr)
+	}
+}
+*/
+
 // Bits for the status byte
 ZeroFlag: u8 : 0b0000_0010
 NegativeFlag: u8 : 0b1000_0000
@@ -570,12 +613,6 @@ ora :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
 	state.status = setNegativeFlag(state.a, state.status)
 }
 
-/*
-pha :: proc(state: ^MOS6502, memory: []u8) {
-	push8(state.a, state, getStack(memory))
-}
-*/
-
 rti :: proc(state: ^MOS6502, memory: []u8) {
 	log.error("RTI Not Implemented")
 }
@@ -623,13 +660,6 @@ setFlag :: proc(state: ^MOS6502, flag: u8) {
 store :: proc(register: u8, state: ^MOS6502, memory: []u8, addMode: AddressingMode) {
 	offset := getOffset(state, memory, addMode)
 	memory[offset] = register
-
-	/*
-	// Since writeValue8 assumes we have already advanced the pc past
-	// the address
-	tmp := getValue8(state, memory, addMode)
-	writeValue8(register, state, memory, addMode)
-	*/
 }
 
 transfer :: proc(dest: ^u8, init: ^u8, state: ^MOS6502) {
@@ -638,21 +668,6 @@ transfer :: proc(dest: ^u8, init: ^u8, state: ^MOS6502) {
 	state.status = setZeroFlag(dest^, state.status)
 	state.status = setNegativeFlag(dest^, state.status)
 }
-
-/*
-tax :: proc(state: ^MOS6502) {
-	state.ix = state.a
-	state.status = setZeroFlag(state.ix, state.status)
-	state.status = setNegativeFlag(state.ix, state.status)
-}
-
-
-inx :: proc(state: ^MOS6502) {
-	state.ix += 1
-	state.status = setZeroFlag(state.ix, state.status)
-	state.status = setNegativeFlag(state.ix, state.status)
-}
-*/
 
 getOffset :: proc(state: ^MOS6502, memory: []u8, addMode: AddressingMode) -> u16 {
 	switch addMode {
@@ -836,26 +851,10 @@ writeImmediate8 :: proc(value: u8, state: ^MOS6502, memory: []u8) {
 	memory[state.pc - 1] = value
 }
 
-/*
-readImmediate16 :: proc(state: ^MOS6502, memory: []u8) -> u16 {
-    low := readImmediate8(state, memory)
-    high := readImmediate8(state, memory)
-    return getCombined(high, low)
-}
-*/
-
 readImmediate16 :: proc(state: ^MOS6502, memory: []u8) -> u16 {
 	state.pc += 2
 	return auto_cast (cast(^u16le)&memory[state.pc - 2])^
 }
-
-/*
-writeImmediate16 :: proc(value: u16, state: ^MOS6502, memory: []u8) {
-	high, low := getHighLow(value)
-	memory[state.pc - 2] = low
-	memory[state.pc - 1] = high
-}
-*/
 
 emulate6502p :: proc(state: ^MOS6502, memory: []u8) -> int {
 	opcode: OpCode = auto_cast readImmediate8(state, memory)
@@ -928,7 +927,6 @@ emulate6502p :: proc(state: ^MOS6502, memory: []u8) -> int {
 	case .JSR:
 		jump(state, memory, opCodeInfo.addMode, true)
 	case .LDA_IM, .LDA_ZP, .LDA_ZPX, .LDA_A, .LDA_AX, .LDA_AY, .LDA_IX, .LDA_IY:
-		//lda(state, memory, opCodeInfo.addMode)
 		loadRegister(state, &state.a, memory, opCodeInfo.addMode)
 	case .LDX_IM, .LDX_ZP, .LDX_ZPY, .LDX_A, .LDX_AY:
 		loadRegister(state, &state.ix, memory, opCodeInfo.addMode)

@@ -7,13 +7,9 @@ import "core:os"
 import "core:time"
 
 import "hardware:cpu"
+import "hardware:system"
 
 import rl "vendor:raylib"
-
-NES :: struct {
-	cpu6502: cpu.MOS6502,
-	memory:  []u8,
-}
 
 loadRom :: proc(file: string, memory: []u8) {
 	source, success := os.read_entire_file_from_filename(file)
@@ -32,7 +28,7 @@ reset :: proc(state: ^cpu.MOS6502, memory: []u8) {
 	state.sp = 0xFF
 }
 
-loadAndRun :: proc(file: string, nes: ^NES) {
+loadAndRun :: proc(file: string, nes: ^system.NES) {
 	loadRom(file, nes.memory)
 	reset(&nes.cpu6502, nes.memory)
 }
@@ -97,7 +93,7 @@ handle_input :: proc(memory: []u8) {
 	if rl.IsKeyPressed(rl.KeyboardKey.D) do memory[0xFF] = 0x64
 }
 
-run :: proc(nes: ^NES) {
+run :: proc(nes: ^system.NES) {
 	totCycles: int
 
 	screen_state := make([]rl.Color, 0x400)
@@ -472,7 +468,7 @@ test_snake_game :: proc() {
 
 	sw: time.Stopwatch
 
-	nes_state: NES
+	nes_state: system.NES
 
 	rl.InitWindow(320, 320, "Odin NES")
 	defer rl.CloseWindow()
