@@ -7,10 +7,12 @@ import "core:os"
 import "core:time"
 
 import "hardware:cpu"
+import "hardware:ppu"
 import "hardware:system"
 
 import rl "vendor:raylib"
 
+/*
 loadRom :: proc(file: string, memory: []u8) {
 	source, success := os.read_entire_file_from_filename(file)
 
@@ -32,6 +34,7 @@ loadAndRun :: proc(file: string, nes: ^system.NES) {
 	loadRom(file, nes.memory)
 	reset(&nes.cpu6502, nes.memory)
 }
+*/
 
 get_color :: proc(val: u8) -> rl.Color {
 
@@ -124,32 +127,50 @@ run :: proc(nes: ^system.NES) {
 		}
 
 		// fmt.println("AAA:", nes.cpu6502.pc, nes.bus.cpu_vram[nes.cpu6502.pc])
-		// cpu.disassemble6502p(nes.bus.cpu_vram[:], nes.cpu6502.pc)
+		debug := false
+		if debug {
+			cpu.disassemble6502p(&nes.cpu6502, &nes.bus)
+			fmt.printf(" ")
+			ppu.display_cycles()
+			fmt.printf(" ")
+			cpu.display_cycles(&nes.cpu6502, totCycles)
+			fmt.printf("\n")
+		}
 		totCycles += cpu.emulate6502p(&nes.cpu6502, &nes.bus)
 
 		//fmt.println("STACK:", nes.bus.cpu_vram[0x01C0:0x0200])
 		time.accurate_sleep(70000)
-		if nes.bus.cpu_vram[nes.cpu6502.pc] == 0 do break
+		if nes.bus.read(&nes.bus, auto_cast nes.cpu6502.pc) == 0 do break
+		//if totCycles > 50 do break
 	}
 }
 
-
 debug6502 :: proc() {
-	source, success := os.read_entire_file_from_filename(
+	/*source, success := os.read_entire_file_from_filename(
 		"C:/dev/6502_65C02_functional_tests/bin_files/6502_functional_test.bin",
-	)
+	)*/
 
-	/*
-	memory: []u8
-	state: cpu.MOS6502
-	ncycles: int
+	// sw: time.Stopwatch
 
-	memory = make([]u8, 0xFFFF)
+	nes := system.init_nes("games/nestest.nes")
 
-	for {
-		ncycles = cpu.emulate6502p(&state, memory)
+	totCycles := 7
+	for totCycles < 5000 {
+
+		cpu.disassemble6502p(&nes.cpu6502, &nes.bus)
+		cpu.display_registers(&nes.cpu6502)
+		fmt.printf(" ")
+		ppu.display_cycles()
+		fmt.printf(" ")
+		cpu.display_cycles(&nes.cpu6502, totCycles)
+		fmt.printf("\n")
+
+		totCycles += cpu.emulate6502p(&nes.cpu6502, &nes.bus)
+
+
 	}
-	*/
+
+	//run(&nes_state)
 }
 
 test_snake_game :: proc() {
@@ -472,7 +493,7 @@ test_snake_game :: proc() {
 	sw: time.Stopwatch
 
 	// nes_state: system.NES
-	nes_state := system.init_nes()
+	nes_state := system.init_nes("TEST")
 
 	rl.InitWindow(320, 320, "Odin NES")
 	defer rl.CloseWindow()
@@ -498,10 +519,25 @@ test_snake_game :: proc() {
 	// fmt.printf("%02x", state.ix)
 }
 
+run_game :: proc(fn: string) {
+
+	nes_state := system.init_nes(fn)
+
+	rl.InitWindow(320, 320, "Odin NES")
+	defer rl.CloseWindow()
+
+	rl.SetTargetFPS(60)
+
+	run(&nes_state)
+}
 main :: proc() {
-	test_snake_game()
+	//test_snake_game()
+
+	context.logger = log.create_console_logger()
 
 	when ODIN_DEBUG {
 		debug6502()
+	} else {
+		run_game("games/snake.nes")
 	}
 }

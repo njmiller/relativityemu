@@ -1,4 +1,4 @@
-package hardware
+package memory
 
 /* Simple infrastructure for a type to pass to CPU implementations.
    Each separate system will write their own Bus implementation that 
@@ -13,7 +13,6 @@ ReadFn :: #type proc(bus: ^Bus, addr: u16) -> u8
 WriteFn :: #type proc(bus: ^Bus, addr: u16, data: u8)
 
 Bus :: struct {
-	// memory: []u8,
 	read:  ReadFn,
 	write: WriteFn,
 }

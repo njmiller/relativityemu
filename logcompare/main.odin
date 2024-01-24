@@ -1,0 +1,41 @@
+package main
+
+import "core:fmt"
+import "core:os"
+import "core:strings"
+
+main :: proc() {
+
+	fn1 := os.args[1]
+	fn2 := os.args[2]
+
+	data1_tmp, success1 := os.read_entire_file_from_filename(fn1)
+	data1 := strings.split_lines(auto_cast data1_tmp)
+
+	data2_tmp, success2 := os.read_entire_file_from_filename(fn2)
+	data2 := strings.split_lines(auto_cast data2_tmp)
+
+	nlines := len(data1) - 1 // because of a newline at the end of the log file
+
+	fmt.println("Comparing", nlines, "lines")
+	leq: int
+	for i in 0 ..< nlines {
+		line1 := data1[i][:75]
+		line2 := data2[i][:75]
+
+		leq = strings.compare(line1, line2)
+
+		if leq != 0 {
+			fmt.println("Ending at line number", i)
+			fmt.println(line1)
+			fmt.println(line2)
+
+			fmt.println("Previous Line")
+			fmt.println(data1[i - 1][:75])
+			return
+		}
+
+	}
+
+	fmt.println("All", nlines, "lines match")
+}

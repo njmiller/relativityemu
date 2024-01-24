@@ -251,7 +251,7 @@ AddModeMap := map[OpCode]OpCodeInfo {
 	.LSR_ZPX = {6, .ZeroPage_X},
 	.LSR_A = {6, .Absolute},
 	.LSR_AX = {7, .Absolute_X},
-	.NOP = {1, .NoneAddressing},
+	.NOP = {2, .NoneAddressing},
 	.ORA_IM = {2, .Immediate},
 	.ORA_ZP = {3, .ZeroPage},
 	.ORA_ZPX = {4, .ZeroPage_X},
@@ -329,15 +329,29 @@ AddressingMode :: enum u8 {
 	NoneAddressing,
 }
 
+//TODO: Convert the status flag to a bitset and just convert to a number when pushing/poping from
+//      the stack
 MOS6502 :: struct {
-	a:      u8,
-	status: u8,
-	pc:     int,
-	sp:     u8,
-	ix:     u8,
-	iy:     u8,
-	ec:     int, // set for extra cycles than the default based on branch or page crossing
+	a:        u8,
+	status:   u8,
+	pc:       int,
+	sp:       u8,
+	ix:       u8,
+	iy:       u8,
+	ec:       int, // set for extra cycles than the default based on branch or page crossing
+	dm_avail: bool, // set to whether the decimal mode is available
+	status2:  Status_Set,
 }
+
+Flags :: enum {
+	Zero,
+	Negative,
+	Carry,
+	InterruptDisable,
+	DecimalMode,
+	Overflow,
+}
+Status_Set :: bit_set[Flags]
 
 // Bits for the status byte
 ZeroFlag: u8 : 0b0000_0010
@@ -360,6 +374,47 @@ setFlags :: proc(value: u8, flagsIn: u8) -> u8 {
 	return 1
 }
 
+// Flag setting functions using the Status_Set bit_set
+set_zero_flag :: proc(value: u8, status: Status_Set) -> Status_Set {
+	status := status
+	if value == 0 {
+		status += {Flags.Zero}
+	} else {
+		status -= {Flags.Zero}
+	}
+
+	return status
+}
+
+set_negative_flag :: proc(value: u8, status: Status_Set) -> Status_Set {
+	negative_bit: u8 = 1 << NegativeBit
+	status := status
+
+	if value & negative_bit != 0 {
+		status += {Flags.Negative}
+	} else {
+		status -= {Flags.Negative}
+	}
+
+	return status
+}
+
+set_overflow_flag :: proc(val1: u8, val2: u8, sum: u8, status: Status_Set) -> Status_Set {
+	diff1 := (val1 ~ sum) & 0x80 != 0 // checks whether last bit is different
+	diff2 := (val2 ~ sum) & 0x80 != 0
+	is_overflow := diff1 && diff2
+
+	status := status
+
+	if is_overflow {
+		status += {Flags.Overflow}
+	} else {
+		status -= {Flags.Overflow}
+	}
+
+	return status
+}
+
 setZeroFlag :: proc(value: u8, flagsIn: u8) -> u8 {
 	flagsOut := value == 0 ? flagsIn | ZeroFlag : flagsIn &~ ZeroFlag
 	return flagsOut
@@ -371,8 +426,12 @@ setNegativeFlag :: proc(value: u8, flagsIn: u8) -> u8 {
 	return flagsOut
 }
 
-setOverflowFlag :: proc(val1: u8, val2: u8, flagsIn: u8) -> u8 {
-	isOverflow := (val1 & 0x80) != (val2 & 0x80)
+setOverflowFlag :: proc(val1: u8, val2: u8, sum: u8, flagsIn: u8) -> u8 {
+	// Overflow checks for signed overflow, i.e. positive + positive=negative or
+	// negative + negative = positive
+	diff1 := (val1 ~ sum) & 0x80 != 0 // checks whether last bit is different
+	diff2 := (val2 ~ sum) & 0x80 != 0
+	isOverflow := diff1 && diff2
 	flagsOut := isOverflow ? flagsIn | OverflowFlag : flagsIn &~ OverflowFlag
 	return flagsOut
 }
@@ -385,7 +444,7 @@ adc :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) {
 
 	m := getValue8(state, bus, addMode)
 
-	if state.status & DecimalModeFlag != 0 {
+	if state.dm_avail && (state.status & DecimalModeFlag != 0) {
 		m = fromBCD(m)
 	}
 
@@ -396,10 +455,10 @@ adc :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) {
 
 	state.status = setNegativeFlag(value2, state.status)
 	state.status = setZeroFlag(value2, state.status)
-	state.status = setOverflowFlag(state.a, value2, state.status)
+	state.status = setOverflowFlag(state.a, m, value2, state.status)
 	state.status = cy | cy2 ? state.status | 1 : state.status &~ 1
 
-	if state.status & DecimalModeFlag != 0 {
+	if state.dm_avail && (state.status & DecimalModeFlag != 0) {
 		value2 = toBCD(value2)
 	}
 
@@ -471,7 +530,8 @@ branch :: proc(state: ^MOS6502, bus: ^memory.Bus, flag: u8, eq: bool) {
 }
 
 bit :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) {
-	value := state.a & getValue8(state, bus, addMode)
+	mem_val := getValue8(state, bus, addMode)
+	value := state.a & mem_val
 	state.status = setZeroFlag(value, state.status)
 
 	//bit 6 is set to overflow flag
@@ -479,8 +539,10 @@ bit :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) {
 
 	bit6 :: 0b0100_0000
 
-	state.status = bit6 & value != 0 ? state.status | OverflowFlag : state.status &~ OverflowFlag
-	state.status = setNegativeFlag(value, state.status)
+	state.status = bit6 & mem_val != 0 ? state.status | OverflowFlag : state.status &~ OverflowFlag
+
+	// Can just call setNegativeFlag since mem_val being negative is also bit7 being 1
+	state.status = setNegativeFlag(mem_val, state.status)
 }
 
 clear :: proc(state: ^MOS6502, flag: u8) {
@@ -488,9 +550,10 @@ clear :: proc(state: ^MOS6502, flag: u8) {
 }
 
 compare :: proc(state: ^MOS6502, register: ^u8, bus: ^memory.Bus, addMode: AddressingMode) {
-	value := register^ - getValue8(state, bus, addMode)
+	m := getValue8(state, bus, addMode)
+	value := register^ - m
 
-	state.status = value >= 0 ? state.status | CarryFlag : state.status &~ CarryFlag
+	state.status = register^ >= m ? state.status | CarryFlag : state.status &~ CarryFlag
 	state.status = setZeroFlag(value, state.status)
 	state.status = setNegativeFlag(value, state.status)
 }
@@ -596,22 +659,23 @@ rts :: proc(state: ^MOS6502, bus: ^memory.Bus) {
 sbc :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) {
 	m := getValue8(state, bus, addMode)
 
-	if state.status & DecimalModeFlag != 0 {
+	if state.dm_avail && (state.status & DecimalModeFlag != 0) {
 		m = fromBCD(m)
 	}
 	value, cy := bits.overflowing_sub(state.a, m)
-	//onemC := 1 - (state.status & 1)
 	carry := state.status & CarryFlag != 0 ? 0 : 1
-	//onemC := 1 - ((state.status & CarryFlag) >> CarryBit)
 
 	value2, cy2 := bits.overflowing_sub(value, carry)
 
 	state.status = setNegativeFlag(value2, state.status)
 	state.status = setZeroFlag(value2, state.status)
-	state.status = setOverflowFlag(state.a, value2, state.status)
+
+	val_overflow: u8 = auto_cast (-(int(m) + carry))
+
+	state.status = setOverflowFlag(state.a, val_overflow, value2, state.status)
 	state.status = (cy | cy2) ? state.status &~ 1 : state.status | 1
 
-	if state.status & DecimalModeFlag != 0 {
+	if state.dm_avail && (state.status & DecimalModeFlag != 0) {
 		value2 = toBCD(value2)
 	}
 
@@ -956,11 +1020,16 @@ emulate6502p :: proc(state: ^MOS6502, bus: ^memory.Bus) -> int {
 	case .PHA:
 		push8(state.a, state, bus)
 	case .PHP:
-		push8(state.status, state, bus)
+		// Notes say that PHP always pushes the break flag as a 1 to the stack
+		push8(state.status | BreakCommand, state, bus)
 	case .PLA:
 		state.a = pop8(state, bus)
+		state.status = setZeroFlag(state.a, state.status)
+		state.status = setNegativeFlag(state.a, state.status)
 	case .PLP:
-		state.status = pop8(state, bus)
+		// NOTES: From my understanding bits 4/5 (starting at 0) don't actually exist
+		// in memory. The nesttest.log just pads to 8 bits with 1 and 0
+		state.status = (pop8(state, bus) | 0b0010_0000) & 0b1110_1111
 	case .ROL_ACC, .ROL_ZP, .ROL_ZPX, .ROL_A, .ROL_AX:
 		shift(state, bus, opCodeInfo.addMode, true, true)
 	case .ROR_ACC, .ROR_ZP, .ROR_ZPX, .ROR_A, .ROR_AX:
