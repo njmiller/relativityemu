@@ -155,7 +155,7 @@ debug6502 :: proc() {
 	nes := system.init_nes("games/nestest.nes")
 
 	totCycles := 7
-	for totCycles < 5000 {
+	for totCycles < 10000 {
 
 		cpu.disassemble6502p(&nes.cpu6502, &nes.bus)
 		cpu.display_registers(&nes.cpu6502)

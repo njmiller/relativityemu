@@ -178,6 +178,11 @@ AddModeMap := map[OpCode]OpCodeInfo {
 	.AND_AY = {4, .Absolute_Y},
 	.AND_IX = {6, .Indirect_X},
 	.AND_IY = {5, .Indirect_Y},
+	.ASL_ACC = {2, .Accumulator},
+	.ASL_ZP = {5, .ZeroPage},
+	.ASL_ZPX = {6, .ZeroPage_X},
+	.ASL_A = {6, .Absolute},
+	.ASL_AX = {7, .Absolute_X},
 	.BCC = {2, .Relative},
 	.BCS = {2, .Relative},
 	.BEQ = {2, .Relative},
@@ -742,10 +747,8 @@ getOffset :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) ->
 		return getCombined(high, low)
 	case .Indirect_Y:
 		base := readImmediate8(state, bus)
-		// low := memory[base]
-		// high := memory[base + 1]
 		low := bus.read(bus, auto_cast base)
-		high := bus.read(bus, auto_cast base + 1)
+		high := bus.read(bus, auto_cast (base + 1))
 		return getCombined(high, low) + u16(state.iy)
 	case .NoneAddressing:
 		log.error("Trying to read operand with NoneAddressing")
@@ -803,7 +806,7 @@ getValue8 :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) ->
 	case .Indirect_Y:
 		base := readImmediate8(state, bus)
 		low := bus.read(bus, auto_cast base)
-		high := bus.read(bus, auto_cast base + 1)
+		high := bus.read(bus, auto_cast (base + 1))
 		//high := memory[base + 1]
 		addr := getCombined(high, low) + u16(state.iy)
 		// return memory[getCombined(high, low) + u16(state.iy)]
