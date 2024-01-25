@@ -7,6 +7,8 @@ import "core:strings"
 import "hardware:memory"
 
 //Instructions for each addressing mode
+
+/*
 simpleInstruction :: proc(text: string) -> int {
 	fmt.printf("       ")
 	fmt.printf(text)
@@ -14,6 +16,7 @@ simpleInstruction :: proc(text: string) -> int {
 	// fmt.printf("\n")
 	return 1
 }
+*/
 
 simple_instruction :: proc(text: string) -> int {
 	fmt.printf("       ")
@@ -46,27 +49,37 @@ absolute_instruction :: proc(
 	bus: ^memory.Bus,
 	extra: bool,
 ) -> int {
-	val2 := bus.read(bus, auto_cast cpu.pc + 1)
-	val1 := bus.read(bus, auto_cast cpu.pc + 2)
+	low := bus.read(bus, auto_cast cpu.pc + 1)
+	high := bus.read(bus, auto_cast cpu.pc + 2)
 
-	fmt.printf("%02X %02X  ", val2, val1)
+	fmt.printf("%02X %02X  ", low, high)
 	fmt.printf(text)
-	fmt.printf(" $%02X%02X", val1, val2)
 
+	addr := getCombined(high, low)
+	fmt.printf(" $%04X", addr)
+
+
+	if register == "X" {
+		addr += auto_cast cpu.ix
+	} else if register == "Y" {
+		addr += auto_cast cpu.iy
+	}
 
 	if register == "X" || register == "Y" {
 		fmt.printf(",")
 		fmt.printf(register)
+		fmt.printf(" @ %04X", addr)
 	}
 
 	if extra {
-		addr := getCombined(val1, val2)
+		//addr := getCombined(val1, val2)
 		mval := bus.read(bus, auto_cast addr)
 		fmt.printf(" = %02X", mval)
 	}
 
 	nblank := 32 - len(text) - 6
 	if extra do nblank -= 5
+	if register == "X" || register == "Y" do nblank -= 9
 	blank_string := strings.repeat(" ", nblank)
 	fmt.printf(blank_string)
 	// fmt.printf("                  ")
@@ -111,8 +124,10 @@ zero_page_instruction :: proc(
 	add_mode: AddressingMode
 	if register == "X" {
 		add_mode = .ZeroPage_X
+		fmt.printf(" @ %02X", value + cpu.ix)
 	} else if register == "Y" {
 		add_mode = .ZeroPage_Y
+		fmt.printf(" @ %02X", value + cpu.iy)
 	} else {
 		add_mode = .ZeroPage
 	}
@@ -123,12 +138,14 @@ zero_page_instruction :: proc(
 	fmt.printf(" = %02X", val2)
 
 	nblank := 32 - len(text) - 5 - 4
+	if register == "X" || register == "Y" do nblank -= 7
 	blank_string := strings.repeat(" ", nblank)
 	// fmt.printf("                    ")
 	fmt.printf(blank_string)
 	return 2
 }
 
+/*
 immediateInstruction :: proc(text: string, value: u8) -> int {
 	fmt.printf("%02X     ", value)
 	fmt.printf(text)
@@ -137,6 +154,7 @@ immediateInstruction :: proc(text: string, value: u8) -> int {
 	// fmt.printf("\n")
 	return 2
 }
+*/
 
 immediate_instruction :: proc(
 	text: string,
@@ -163,6 +181,7 @@ immediate_instruction :: proc(
 	return 2
 }
 
+/*
 indirectInstruction :: proc(text: string, val1: u8, val2: u8) -> int {
 	fmt.printf("%02X %02X  ", val2, val1)
 	fmt.printf(text)
@@ -173,8 +192,31 @@ indirectInstruction :: proc(text: string, val1: u8, val2: u8) -> int {
 	fmt.printf("                ")
 	return 3
 }
+*/
 
-indirect_instruction :: proc(test: string, cpu: ^MOS6502, bus: ^memory.Bus) -> int {
+indirect_instruction :: proc(text: string, cpu: ^MOS6502, bus: ^memory.Bus) -> int {
+	val1 := bus.read(bus, auto_cast cpu.pc + 1)
+	val2 := bus.read(bus, auto_cast cpu.pc + 2)
+	fmt.printf("%02X %02X  ", val1, val2)
+	fmt.printf(text)
+	// fmt.printf(" (")
+	fmt.printf(" ($%02X%02X)", val2, val1)
+	// fmt.printf(")\n")
+	// fmt.printf(")")
+
+	addr := getCombined(val2, val1)
+	mem_val_low := bus.read(bus, auto_cast addr)
+
+	high_bits := addr & 0xFF00
+	high_off := u8(addr & 0x00FF) + 1
+	high_addr := high_bits | u16(high_off)
+	mem_val_high := bus.read(bus, high_addr)
+
+	fmt.printf(" = %02X%02X", mem_val_high, mem_val_low)
+
+	nblank := 32 - len(text) - 15
+	blank_string := strings.repeat(" ", nblank)
+	fmt.printf(blank_string)
 
 	return 3
 }
@@ -260,14 +302,16 @@ disassemble6502p :: proc(cpu: ^MOS6502, bus: ^memory.Bus) -> int {
 	val1 := bus.read(bus, auto_cast pc + 1)
 	val2 := bus.read(bus, auto_cast pc + 2)
 
-	fmt.printf("%02X  ", pc)
+	fmt.printf("%04X  ", pc)
 	fmt.printf("%02X ", u8(opcode))
 
 	switch opcode {
 	case .BRK:
-		return simpleInstruction("BRK")
+		// return simpleInstruction("BRK")
+		return simple_instruction("BRK")
 	case .ADC_IM:
-		return immediateInstruction("ADC", val1)
+		//return immediateInstruction("ADC", val1)
+		return immediate_instruction("ADC", cpu, bus, AddressingMode.Immediate)
 	case .ADC_ZP:
 		// return zeroPageInstruction("ADC", "", val1)
 		return zero_page_instruction("ADC", "", cpu, bus)
@@ -290,7 +334,8 @@ disassemble6502p :: proc(cpu: ^MOS6502, bus: ^memory.Bus) -> int {
 		// return indirectYInstruction("ADC", val1)
 		return indirect_y_instruction("ADC", cpu, bus)
 	case .AND_IM:
-		return immediateInstruction("AND", val1)
+		// return immediateInstruction("AND", val1)
+		return immediate_instruction("AND", cpu, bus, AddressingMode.Immediate)
 	case .AND_ZP:
 		// return zeroPageInstruction("AND", "", val1)
 		return zero_page_instruction("AND", "", cpu, bus)
@@ -359,15 +404,20 @@ disassemble6502p :: proc(cpu: ^MOS6502, bus: ^memory.Bus) -> int {
 		// return immediateInstruction("BVS", val1)
 		return immediate_instruction("BVS", cpu, bus, AddressingMode.Relative)
 	case .CLC:
-		return simpleInstruction("CLC")
+		// return simpleInstruction("CLC")
+		return simple_instruction("CLC")
 	case .CLD:
-		return simpleInstruction("CLD")
+		// return simpleInstruction("CLD")
+		return simple_instruction("CLD")
 	case .CLI:
-		return simpleInstruction("CLI")
+		// return simpleInstruction("CLI")
+		return simple_instruction("CLI")
 	case .CLV:
-		return simpleInstruction("CLV")
+		// return simpleInstruction("CLV")
+		return simple_instruction("CLV")
 	case .CMP_IM:
-		return immediateInstruction("CMP", val1)
+		// return immediateInstruction("CMP", val1)
+		return immediate_instruction("CMP", cpu, bus, AddressingMode.Immediate)
 	case .CMP_ZP:
 		// return zeroPageInstruction("CMP", "", val1)
 		return zero_page_instruction("CMP", "", cpu, bus)
@@ -390,7 +440,8 @@ disassemble6502p :: proc(cpu: ^MOS6502, bus: ^memory.Bus) -> int {
 		// return indirectYInstruction("CMP", val1)
 		return indirect_y_instruction("CMP", cpu, bus)
 	case .CPX_IM:
-		return immediateInstruction("CPX", val1)
+		// return immediateInstruction("CPX", val1)
+		return immediate_instruction("CPX", cpu, bus, AddressingMode.Immediate)
 	case .CPX_ZP:
 		// return zeroPageInstruction("CPX", "", val1)
 		return zero_page_instruction("CPX", "", cpu, bus)
@@ -398,7 +449,8 @@ disassemble6502p :: proc(cpu: ^MOS6502, bus: ^memory.Bus) -> int {
 		// return absoluteInstruction("CPX", "", val2, val1)
 		return absolute_instruction("CPX", "", cpu, bus, true)
 	case .CPY_IM:
-		return immediateInstruction("CPY", val1)
+		// return immediateInstruction("CPY", val1)
+		return immediate_instruction("CPY", cpu, bus, AddressingMode.Immediate)
 	case .CPY_ZP:
 		// return zeroPageInstruction("CPY", "", val1)
 		return zero_page_instruction("CPY", "", cpu, bus)
@@ -418,11 +470,14 @@ disassemble6502p :: proc(cpu: ^MOS6502, bus: ^memory.Bus) -> int {
 		// return absoluteInstruction("DEC", "X", val2, val1)
 		return absolute_instruction("DEC", "X", cpu, bus, true)
 	case .DEX:
-		return simpleInstruction("DEX")
+		// return simpleInstruction("DEX")
+		return simple_instruction("DEX")
 	case .DEY:
-		return simpleInstruction("DEY")
+		// return simpleInstruction("DEY")
+		return simple_instruction("DEY")
 	case .EOR_IM:
-		return immediateInstruction("EOR", val1)
+		// return immediateInstruction("EOR", val1)
+		return immediate_instruction("EOR", cpu, bus, AddressingMode.Immediate)
 	case .EOR_ZP:
 		// return zeroPageInstruction("EOR", "", val1)
 		return zero_page_instruction("EOR", "", cpu, bus)
@@ -457,19 +512,23 @@ disassemble6502p :: proc(cpu: ^MOS6502, bus: ^memory.Bus) -> int {
 		// return absoluteInstruction("INC", "X", val2, val1)
 		return absolute_instruction("INC", "X", cpu, bus, true)
 	case .INX:
-		return simpleInstruction("INX")
+		// return simpleInstruction("INX")
+		return simple_instruction("INX")
 	case .INY:
-		return simpleInstruction("INY")
+		// return simpleInstruction("INY")
+		return simple_instruction("INY")
 	case .JMP_A:
 		// return absoluteInstruction("JMP", "", val2, val1)
 		return absolute_instruction("JMP", "", cpu, bus, false)
 	case .JMP_I:
-		return indirectInstruction("JMP", val2, val1)
+		// return indirectInstruction("JMP", val2, val1)
+		return indirect_instruction("JMP", cpu, bus)
 	case .JSR:
 		// return absoluteInstruction("JSR", "", val2, val1)
 		return absolute_instruction("JSR", "", cpu, bus, false)
 	case .LDA_IM:
-		return immediateInstruction("LDA", val1)
+		// return immediateInstruction("LDA", val1)
+		return immediate_instruction("LDA", cpu, bus, AddressingMode.Immediate)
 	case .LDA_ZP:
 		// return zeroPageInstruction("LDA", "", val1)
 		return zero_page_instruction("LDA", "", cpu, bus)
@@ -492,7 +551,8 @@ disassemble6502p :: proc(cpu: ^MOS6502, bus: ^memory.Bus) -> int {
 		// return indirectYInstruction("LDA", val1)
 		return indirect_y_instruction("LDA", cpu, bus)
 	case .LDX_IM:
-		return immediateInstruction("LDX", val1)
+		// return immediateInstruction("LDX", val1)
+		return immediate_instruction("LDX", cpu, bus, AddressingMode.Immediate)
 	case .LDX_ZP:
 		// return zeroPageInstruction("LDX", "", val1)
 		return zero_page_instruction("LDX", "", cpu, bus)
@@ -506,7 +566,8 @@ disassemble6502p :: proc(cpu: ^MOS6502, bus: ^memory.Bus) -> int {
 		// return absoluteInstruction("LDX", "Y", val2, val1)
 		return absolute_instruction("LDX", "Y", cpu, bus, true)
 	case .LDY_IM:
-		return immediateInstruction("LDY", val1)
+		// return immediateInstruction("LDY", val1)
+		return immediate_instruction("LDY", cpu, bus, AddressingMode.Immediate)
 	case .LDY_ZP:
 		// return zeroPageInstruction("LDY", "", val1)
 		return zero_page_instruction("LDY", "", cpu, bus)
@@ -535,9 +596,11 @@ disassemble6502p :: proc(cpu: ^MOS6502, bus: ^memory.Bus) -> int {
 		// return absoluteInstruction("LSR", "X", val2, val1)
 		return absolute_instruction("LSR", "X", cpu, bus, true)
 	case .NOP:
-		return simpleInstruction("NOP")
+		// return simpleInstruction("NOP")
+		return simple_instruction("NOP")
 	case .ORA_IM:
-		return immediateInstruction("ORA", val1)
+		// return immediateInstruction("ORA", val1)
+		return immediate_instruction("ORA", cpu, bus, AddressingMode.Immediate)
 	case .ORA_ZP:
 		// return zeroPageInstruction("ORA", "", val1)
 		return zero_page_instruction("ORA", "", cpu, bus)
@@ -560,13 +623,17 @@ disassemble6502p :: proc(cpu: ^MOS6502, bus: ^memory.Bus) -> int {
 		// return indirectYInstruction("ORA", val1)
 		return indirect_y_instruction("ORA", cpu, bus)
 	case .PHA:
-		return simpleInstruction("PHA")
+		// return simpleInstruction("PHA")
+		return simple_instruction("PHA")
 	case .PHP:
-		return simpleInstruction("PHP")
+		// return simpleInstruction("PHP")
+		return simple_instruction("PHP")
 	case .PLA:
-		return simpleInstruction("PLA")
+		// return simpleInstruction("PLA")
+		return simple_instruction("PLA")
 	case .PLP:
-		return simpleInstruction("PLP")
+		// return simpleInstruction("PLP")
+		return simple_instruction("PLP")
 	case .ROL_ACC:
 		// return simpleInstruction("ROL A")
 		return simple_instruction("ROL A")
@@ -598,11 +665,14 @@ disassemble6502p :: proc(cpu: ^MOS6502, bus: ^memory.Bus) -> int {
 		// return absoluteInstruction("ROR", "X", val2, val1)
 		return absolute_instruction("ROR", "X", cpu, bus, true)
 	case .RTI:
-		return simpleInstruction("RTI")
+		// return simpleInstruction("RTI")
+		return simple_instruction("RTI")
 	case .RTS:
-		return simpleInstruction("RTS")
+		// return simpleInstruction("RTS")
+		return simple_instruction("RTS")
 	case .SBC_IM:
-		return immediateInstruction("SBC", val1)
+		// return immediateInstruction("SBC", val1)
+		return immediate_instruction("SBC", cpu, bus, AddressingMode.Immediate)
 	case .SBC_ZP:
 		// return zeroPageInstruction("SBC", "", val1)
 		return zero_page_instruction("SBC", "", cpu, bus)
@@ -625,11 +695,14 @@ disassemble6502p :: proc(cpu: ^MOS6502, bus: ^memory.Bus) -> int {
 		// return indirectYInstruction("SBC", val1)
 		return indirect_y_instruction("SBC", cpu, bus)
 	case .SEC:
-		return simpleInstruction("SEC")
+		// return simpleInstruction("SEC")
+		return simple_instruction("SEC")
 	case .SED:
-		return simpleInstruction("SED")
+		// return simpleInstruction("SED")
+		return simple_instruction("SED")
 	case .SEI:
-		return simpleInstruction("SEI")
+		// return simpleInstruction("SEI")
+		return simple_instruction("SEI")
 	case .STA_ZP:
 		// return zeroPageInstruction("STA", "", val1)
 		return zero_page_instruction("STA", "", cpu, bus)
@@ -670,17 +743,23 @@ disassemble6502p :: proc(cpu: ^MOS6502, bus: ^memory.Bus) -> int {
 		// return absoluteInstruction("STY", "", val2, val1)
 		return absolute_instruction("STY", "", cpu, bus, true)
 	case .TAX:
-		return simpleInstruction("TAX")
+		// return simpleInstruction("TAX")
+		return simple_instruction("TAX")
 	case .TAY:
-		return simpleInstruction("TAY")
+		// return simpleInstruction("TAY")
+		return simple_instruction("TAY")
 	case .TSX:
-		return simpleInstruction("TSX")
+		// return simpleInstruction("TSX")
+		return simple_instruction("TSX")
 	case .TXA:
-		return simpleInstruction("TXA")
+		// return simpleInstruction("TXA")
+		return simple_instruction("TXA")
 	case .TXS:
-		return simpleInstruction("TXS")
+		// return simpleInstruction("TXS")
+		return simple_instruction("TXS")
 	case .TYA:
-		return simpleInstruction("TYA")
+		// return simpleInstruction("TYA")
+		return simple_instruction("TYA")
 	}
 
 	return 0

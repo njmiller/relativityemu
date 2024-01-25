@@ -222,6 +222,7 @@ AddModeMap := map[OpCode]OpCodeInfo {
 	.EOR_ZPX = {4, .ZeroPage_X},
 	.EOR_A = {4, .Absolute},
 	.EOR_AX = {4, .Absolute_X},
+	.EOR_AY = {4, .Absolute_Y},
 	.EOR_IX = {6, .Indirect_X},
 	.EOR_IY = {5, .Indirect_Y},
 	.INC_ZP = {5, .ZeroPage},
@@ -581,7 +582,6 @@ dec :: proc(state: ^MOS6502, register: ^u8, bus: ^memory.Bus, addMode: Addressin
 
 eor :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) {
 	state.a = state.a ~ getValue8(state, bus, addMode)
-
 	state.status = setZeroFlag(state.a, state.status)
 	state.status = setNegativeFlag(state.a, state.status)
 }
@@ -738,7 +738,12 @@ getOffset :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) ->
 	case .Indirect:
 		offset1 := readImmediate16(state, bus)
 		low := bus.read(bus, offset1)
-		high := bus.read(bus, offset1 + 1)
+
+		// Indirect addressing can't cross page boundary
+		high_bits := offset1 & 0xFF00
+		high_off := u8(offset1 & 0x00FF) + 1
+		high_addr := high_bits | u16(high_off)
+		high := bus.read(bus, high_addr)
 		return getCombined(high, low)
 	case .Indirect_X:
 		addr := state.ix + readImmediate8(state, bus)
@@ -937,6 +942,7 @@ readImmediate16 :: proc(state: ^MOS6502, bus: ^memory.Bus) -> u16 {
 	low := bus.read(bus, auto_cast state.pc)
 	high := bus.read(bus, auto_cast state.pc + 1)
 	// data_out: u16 = auto_cast (cast(^u16le)&data)^
+
 	state.pc += 2
 
 	return getCombined(high, low)

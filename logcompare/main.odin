@@ -19,9 +19,14 @@ main :: proc() {
 
 	fmt.println("Comparing", nlines, "lines")
 	leq: int
+	nchars := 74
 	for i in 0 ..< nlines {
-		line1 := data1[i][:75]
-		line2 := data2[i][:75]
+		if len(data1[i]) < nchars {
+			fmt.println("Bad line length at line", i)
+			return
+		}
+		line1 := data1[i][:nchars]
+		line2 := data2[i][:nchars]
 
 		leq = strings.compare(line1, line2)
 
