@@ -642,7 +642,14 @@ ora :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) {
 }
 
 rti :: proc(state: ^MOS6502, bus: ^memory.Bus) {
-	log.error("RTI Not Implemented")
+	// log.error("RTI Not Implemented")
+	state.status = (pop8(state, bus) | 0b0010_0000) & 0b1110_1111
+
+	high, low: u8
+	popR(&high, &low, state, bus)
+
+	state.pc = auto_cast getCombined(high, low)
+	//state.pc = auto_cast pop(state, bus)
 }
 
 rts :: proc(state: ^MOS6502, bus: ^memory.Bus) {
@@ -692,11 +699,13 @@ store :: proc(register: u8, state: ^MOS6502, bus: ^memory.Bus, addMode: Addressi
 	bus.write(bus, offset, register)
 }
 
-transfer :: proc(dest: ^u8, init: ^u8, state: ^MOS6502) {
+transfer :: proc(dest: ^u8, init: ^u8, state: ^MOS6502, set_flags: bool) {
 	dest^ = init^
 
-	state.status = setZeroFlag(dest^, state.status)
-	state.status = setNegativeFlag(dest^, state.status)
+	if set_flags {
+		state.status = setZeroFlag(dest^, state.status)
+		state.status = setNegativeFlag(dest^, state.status)
+	}
 }
 
 getOffset :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) -> u16 {
@@ -723,17 +732,13 @@ getOffset :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) ->
 		return u16(readImmediate8(state, bus) + state.iy)
 	case .Indirect:
 		offset1 := readImmediate16(state, bus)
-		// low := memory[offset1]
-		// high := memory[offset1 + 1]
 		low := bus.read(bus, offset1)
 		high := bus.read(bus, offset1 + 1)
 		return getCombined(high, low)
 	case .Indirect_X:
 		addr := state.ix + readImmediate8(state, bus)
-		// low := memory[addr]
-		// high := memory[addr + 1]
 		low := bus.read(bus, auto_cast addr)
-		high := bus.read(bus, auto_cast addr + 1)
+		high := bus.read(bus, auto_cast (addr + 1))
 		return getCombined(high, low)
 	case .Indirect_Y:
 		base := readImmediate8(state, bus)
@@ -792,7 +797,7 @@ getValue8 :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) ->
 		//low := memory[addr]
 		//high := memory[addr + 1]
 		low := bus.read(bus, auto_cast addr)
-		high := bus.read(bus, auto_cast addr + 1)
+		high := bus.read(bus, auto_cast (addr + 1))
 		//return memory[getCombined(high, low)]
 		return bus.read(bus, getCombined(high, low))
 	case .Indirect_Y:
@@ -1053,17 +1058,17 @@ emulate6502p :: proc(state: ^MOS6502, bus: ^memory.Bus) -> int {
 	case .STY_ZP, .STY_ZPX, .STY_A:
 		store(state.iy, state, bus, opCodeInfo.addMode)
 	case .TAX:
-		transfer(&state.ix, &state.a, state)
+		transfer(&state.ix, &state.a, state, true)
 	case .TAY:
-		transfer(&state.iy, &state.a, state)
+		transfer(&state.iy, &state.a, state, true)
 	case .TSX:
-		transfer(&state.ix, &state.sp, state)
+		transfer(&state.ix, &state.sp, state, true)
 	case .TXA:
-		transfer(&state.a, &state.ix, state)
+		transfer(&state.a, &state.ix, state, true)
 	case .TXS:
-		transfer(&state.sp, &state.ix, state)
+		transfer(&state.sp, &state.ix, state, false)
 	case .TYA:
-		transfer(&state.a, &state.iy, state)
+		transfer(&state.a, &state.iy, state, true)
 	}
 
 	// Check if it is always +1 for a page boundary crossing
