@@ -254,7 +254,7 @@ disassemble6502p_ver2 :: proc(cpu: ^MOS6502, bus: ^memory.Bus) -> int {
 	fmt.printf("%02X ", u8(opcode))
 
 	opcodeinfo := AddModeMap[opcode]
-	add_mode := opcodeinfo.addMode
+	add_mode := opcodeinfo.add_mode
 
 	reg := ""
 	switch add_mode {
