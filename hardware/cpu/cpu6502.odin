@@ -9,109 +9,141 @@ import "hardware:memory"
 OpCode :: enum u8 {
 	BRK      = 0x00,
 	ORA_IX   = 0x01,
+	SLO_IX   = 0x03,
 	NOP_ZP   = 0x04,
 	ORA_ZP   = 0x05,
 	ASL_ZP   = 0x06,
+	SLO_ZP   = 0x07,
 	PHP      = 0x08,
 	ORA_IM   = 0x09,
 	ASL_ACC  = 0x0A,
 	NOP_A    = 0x0C,
 	ORA_A    = 0x0D,
 	ASL_A    = 0x0E,
+	SLO_A    = 0x0F,
 	BPL      = 0x10,
 	ORA_IY   = 0x11,
+	SLO_IY   = 0x13,
 	NOP_ZPX  = 0x14,
 	ORA_ZPX  = 0x15,
 	ASL_ZPX  = 0x16,
+	SLO_ZPX  = 0x17,
 	CLC      = 0x18,
 	ORA_AY   = 0x19,
 	NOP_U1   = 0x1A,
+	SLO_AY   = 0x1B,
 	NOP_AX   = 0x1C,
 	ORA_AX   = 0x1D,
 	ASL_AX   = 0x1E,
+	SLO_AX   = 0x1F,
 	JSR      = 0x20,
 	AND_IX   = 0x21,
+	RLA_IX   = 0x23,
 	BIT_ZP   = 0x24,
 	AND_ZP   = 0x25,
 	ROL_ZP   = 0x26,
+	RLA_ZP   = 0x27,
 	PLP      = 0x28,
 	AND_IM   = 0x29,
 	ROL_ACC  = 0x2A,
 	BIT_A    = 0x2C,
 	AND_A    = 0x2D,
 	ROL_A    = 0x2E,
+	RLA_A    = 0x2F,
 	BMI      = 0x30,
 	AND_IY   = 0x31,
+	RLA_IY   = 0x33,
 	NOP_ZPX2 = 0x34,
 	AND_ZPX  = 0x35,
 	ROL_ZPX  = 0x36,
+	RLA_ZPX  = 0x37,
 	SEC      = 0x38,
 	AND_AY   = 0x39,
 	NOP_U2   = 0x3A,
+	RLA_AY   = 0x3B,
 	NOP_AX2  = 0x3C,
 	AND_AX   = 0x3D,
 	ROL_AX   = 0x3E,
+	RLA_AX   = 0x3F,
 	RTI      = 0x40,
 	EOR_IX   = 0x41,
+	SRE_IX   = 0x43,
 	NOP_ZP2  = 0x44,
 	EOR_ZP   = 0x45,
 	LSR_ZP   = 0x46,
+	SRE_ZP   = 0x47,
 	PHA      = 0x48,
 	EOR_IM   = 0x49,
 	LSR_ACC  = 0x4A,
 	JMP_A    = 0x4C,
 	EOR_A    = 0x4D,
 	LSR_A    = 0x4E,
+	SRE_A    = 0x4F,
 	BVC      = 0x50,
 	EOR_IY   = 0x51,
+	SRE_IY   = 0x53,
 	NOP_ZPX3 = 0x54,
 	EOR_ZPX  = 0x55,
 	LSR_ZPX  = 0x56,
+	SRE_ZPX  = 0x57,
 	CLI      = 0x58,
 	EOR_AY   = 0x59,
 	NOP_U3   = 0x5A,
+	SRE_AY   = 0x5B,
 	NOP_AX3  = 0x5C,
 	EOR_AX   = 0x5D,
 	LSR_AX   = 0x5E,
+	SRE_AX   = 0x5F,
 	RTS      = 0x60,
 	ADC_IX   = 0x61,
+	RRA_IX   = 0x63,
 	NOP_ZP3  = 0x64,
 	ADC_ZP   = 0x65,
 	ROR_ZP   = 0x66,
+	RRA_ZP   = 0x67,
 	PLA      = 0x68,
 	ADC_IM   = 0x69,
 	ROR_ACC  = 0x6A,
 	JMP_I    = 0x6C,
 	ADC_A    = 0x6D,
 	ROR_A    = 0x6E,
+	RRA_A    = 0x6F,
 	BVS      = 0x70,
 	ADC_IY   = 0x71,
+	RRA_IY   = 0x73,
 	NOP_ZPX4 = 0x74,
 	ADC_ZPX  = 0x75,
 	ROR_ZPX  = 0x76,
+	RRA_ZPX  = 0x77,
 	SEI      = 0x78,
 	ADC_AY   = 0x79,
 	NOP_U4   = 0x7A,
+	RRA_AY   = 0x7B,
 	NOP_AX4  = 0x7C,
 	ADC_AX   = 0x7D,
 	ROR_AX   = 0x7E,
+	RRA_AX   = 0x7F,
 	NOP_I    = 0x80,
 	STA_IX   = 0x81,
 	NOP_I2   = 0x82,
+	SAX_IX   = 0x83,
 	STY_ZP   = 0x84,
 	STA_ZP   = 0x85,
 	STX_ZP   = 0x86,
+	SAX_ZP   = 0x87,
 	DEY      = 0x88,
 	NOP_I3   = 0x89,
 	TXA      = 0x8A,
 	STY_A    = 0x8C,
 	STA_A    = 0x8D,
 	STX_A    = 0x8E,
+	SAX_A    = 0x8F,
 	BCC      = 0x90,
 	STA_IY   = 0x91,
 	STY_ZPX  = 0x94,
 	STA_ZPX  = 0x95,
 	STX_ZPY  = 0x96,
+	SAX_ZPY  = 0x97,
 	TYA      = 0x98,
 	STA_AY   = 0x99,
 	TXS      = 0x9A,
@@ -119,258 +151,333 @@ OpCode :: enum u8 {
 	LDY_IM   = 0xA0,
 	LDA_IX   = 0xA1,
 	LDX_IM   = 0xA2,
+	LAX_IX   = 0xA3,
 	LDY_ZP   = 0xA4,
 	LDA_ZP   = 0xA5,
 	LDX_ZP   = 0xA6,
+	LAX_ZP   = 0xA7,
 	TAY      = 0xA8,
 	LDA_IM   = 0xA9,
 	TAX      = 0xAA,
 	LDY_A    = 0xAC,
 	LDA_A    = 0xAD,
 	LDX_A    = 0xAE,
+	LAX_A    = 0xAF,
 	BCS      = 0xB0,
 	LDA_IY   = 0xB1,
+	LAX_IY   = 0xB3,
 	LDY_ZPX  = 0xB4,
 	LDA_ZPX  = 0xB5,
 	LDX_ZPY  = 0xB6,
+	LAX_ZPY  = 0xB7,
 	CLV      = 0xB8,
 	LDA_AY   = 0xB9,
 	TSX      = 0xBA,
 	LDY_AX   = 0xBC,
 	LDA_AX   = 0xBD,
 	LDX_AY   = 0xBE,
+	LAX_AY   = 0xBF,
 	CPY_IM   = 0xC0,
 	CMP_IX   = 0xC1,
 	NOP_I4   = 0xC2,
+	DCP_IX   = 0xC3,
 	CPY_ZP   = 0xC4,
 	CMP_ZP   = 0xC5,
 	DEC_ZP   = 0xC6,
+	DCP_ZP   = 0xC7,
 	INY      = 0xC8,
 	CMP_IM   = 0xC9,
 	DEX      = 0xCA,
 	CPY_A    = 0xCC,
 	CMP_A    = 0xCD,
 	DEC_A    = 0xCE,
+	DCP_A    = 0xCF,
 	BNE      = 0xD0,
 	CMP_IY   = 0xD1,
+	DCP_IY   = 0xD3,
 	NOP_ZPX5 = 0xD4,
 	CMP_ZPX  = 0xD5,
 	DEC_ZPX  = 0xD6,
+	DCP_ZPX  = 0xD7,
 	CLD      = 0xD8,
 	CMP_AY   = 0xD9,
 	NOP_U5   = 0xDA,
+	DCP_AY   = 0xDB,
 	NOP_AX5  = 0xDC,
 	CMP_AX   = 0xDD,
 	DEC_AX   = 0xDE,
+	DCP_AX   = 0xDF,
 	CPX_IM   = 0xE0,
 	SBC_IX   = 0xE1,
 	NOP_I5   = 0xE2,
+	ISB_IX   = 0xE3,
 	CPX_ZP   = 0xE4,
 	SBC_ZP   = 0xE5,
 	INC_ZP   = 0xE6,
+	ISB_ZP   = 0xE7,
 	INX      = 0xE8,
 	SBC_IM   = 0xE9,
 	NOP      = 0xEA,
+	SBC_IM2  = 0xEB,
 	CPX_A    = 0xEC,
 	SBC_A    = 0xED,
 	INC_A    = 0xEE,
+	ISB_A    = 0xEF,
 	BEQ      = 0xF0,
 	SBC_IY   = 0xF1,
+	ISB_IY   = 0xF3,
 	NOP_ZPX6 = 0xF4,
 	SBC_ZPX  = 0xF5,
 	INC_ZPX  = 0xF6,
+	ISB_ZPX  = 0xF7,
 	SED      = 0xF8,
 	SBC_AY   = 0xF9,
 	NOP_U6   = 0xFA,
+	ISB_AY   = 0xFB,
 	NOP_AX6  = 0xFC,
 	SBC_AX   = 0xFD,
 	INC_AX   = 0xFE,
+	ISB_AX   = 0xFF,
 }
 
 AddModeMap := map[OpCode]OpCodeInfo {
-	.BRK = {7, .NoneAddressing},
-	.ADC_IM = {2, .Immediate},
-	.ADC_ZP = {3, .ZeroPage},
-	.ADC_ZPX = {4, .ZeroPage_X},
-	.ADC_A = {4, .Absolute},
-	.ADC_AX = {4, .Absolute_X},
-	.ADC_AY = {4, .Absolute_Y},
-	.ADC_IX = {6, .Indirect_X},
-	.ADC_IY = {5, .Indirect_Y},
-	.AND_IM = {2, .Immediate},
-	.AND_ZP = {3, .ZeroPage},
-	.AND_ZPX = {4, .ZeroPage_X},
-	.AND_A = {4, .Absolute},
-	.AND_AX = {4, .Absolute_X},
-	.AND_AY = {4, .Absolute_Y},
-	.AND_IX = {6, .Indirect_X},
-	.AND_IY = {5, .Indirect_Y},
-	.ASL_ACC = {2, .Accumulator},
-	.ASL_ZP = {5, .ZeroPage},
-	.ASL_ZPX = {6, .ZeroPage_X},
-	.ASL_A = {6, .Absolute},
-	.ASL_AX = {7, .Absolute_X},
-	.BCC = {2, .Relative},
-	.BCS = {2, .Relative},
-	.BEQ = {2, .Relative},
-	.BIT_ZP = {3, .ZeroPage},
-	.BIT_A = {4, .Absolute},
-	.BMI = {2, .Relative},
-	.BNE = {2, .Relative},
-	.BPL = {2, .Relative},
-	.BVC = {2, .Relative},
-	.BVS = {2, .Relative},
-	.CLC = {2, .NoneAddressing},
-	.CLD = {2, .NoneAddressing},
-	.CLI = {2, .NoneAddressing},
-	.CLV = {2, .NoneAddressing},
-	.CMP_IM = {2, .Immediate},
-	.CMP_ZP = {3, .ZeroPage},
-	.CMP_ZPX = {4, .ZeroPage_X},
-	.CMP_A = {4, .Absolute},
-	.CMP_AX = {4, .Absolute_X},
-	.CMP_AY = {4, .Absolute_Y},
-	.CMP_IX = {6, .Indirect_X},
-	.CMP_IY = {5, .Indirect_Y},
-	.CPX_IM = {2, .Immediate},
-	.CPX_ZP = {3, .ZeroPage},
-	.CPX_A = {4, .Absolute},
-	.CPY_IM = {2, .Immediate},
-	.CPY_ZP = {3, .ZeroPage},
-	.CPY_A = {4, .Absolute},
-	.DEC_ZP = {5, .ZeroPage},
-	.DEC_ZPX = {6, .ZeroPage_X},
-	.DEC_A = {6, .Absolute},
-	.DEC_AX = {7, .Absolute_X},
-	.DEX = {2, .NoneAddressing},
-	.DEY = {2, .NoneAddressing},
-	.EOR_IM = {2, .Immediate},
-	.EOR_ZP = {3, .ZeroPage},
-	.EOR_ZPX = {4, .ZeroPage_X},
-	.EOR_A = {4, .Absolute},
-	.EOR_AX = {4, .Absolute_X},
-	.EOR_AY = {4, .Absolute_Y},
-	.EOR_IX = {6, .Indirect_X},
-	.EOR_IY = {5, .Indirect_Y},
-	.INC_ZP = {5, .ZeroPage},
-	.INC_ZPX = {6, .ZeroPage_X},
-	.INC_A = {6, .Absolute},
-	.INC_AX = {7, .Absolute_X},
-	.INX = {2, .NoneAddressing},
-	.INY = {2, .NoneAddressing},
-	.JMP_A = {3, .Absolute},
-	.JMP_I = {5, .Indirect},
-	.JSR = {6, .Absolute},
-	.LDA_IM = {2, .Immediate},
-	.LDA_ZP = {3, .ZeroPage},
-	.LDA_ZPX = {4, .ZeroPage_X},
-	.LDA_A = {4, .Absolute},
-	.LDA_AX = {4, .Absolute_X},
-	.LDA_AY = {4, .Absolute_Y},
-	.LDA_IX = {6, .Indirect_X},
-	.LDA_IY = {5, .Indirect_Y},
-	.LDX_IM = {2, .Immediate},
-	.LDX_ZP = {3, .ZeroPage},
-	.LDX_ZPY = {4, .ZeroPage_Y},
-	.LDX_A = {4, .Absolute},
-	.LDX_AY = {4, .Absolute_Y},
-	.LDY_IM = {2, .Immediate},
-	.LDY_ZP = {3, .ZeroPage},
-	.LDY_ZPX = {4, .ZeroPage_X},
-	.LDY_A = {4, .Absolute},
-	.LDY_AX = {4, .Absolute_X},
-	.LSR_ACC = {2, .Accumulator},
-	.LSR_ZP = {5, .ZeroPage},
-	.LSR_ZPX = {6, .ZeroPage_X},
-	.LSR_A = {6, .Absolute},
-	.LSR_AX = {7, .Absolute_X},
-	.NOP = {2, .NoneAddressing},
-	.NOP_U1 = {2, .NoneAddressing},
-	.NOP_U2 = {2, .NoneAddressing},
-	.NOP_U3 = {2, .NoneAddressing},
-	.NOP_U4 = {2, .NoneAddressing},
-	.NOP_U5 = {2, .NoneAddressing},
-	.NOP_U6 = {2, .NoneAddressing},
-	.NOP_I = {2, .Immediate},
-	.NOP_I2 = {2, .Immediate},
-	.NOP_I3 = {2, .Immediate},
-	.NOP_I4 = {2, .Immediate},
-	.NOP_I5 = {2, .Immediate},
-	.NOP_ZP = {3, .ZeroPage},
-	.NOP_ZP2 = {3, .ZeroPage},
-	.NOP_ZP3 = {3, .ZeroPage},
-	.NOP_ZPX = {4, .ZeroPage_X},
-	.NOP_ZPX2 = {4, .ZeroPage_X},
-	.NOP_ZPX3 = {4, .ZeroPage_X},
-	.NOP_ZPX4 = {4, .ZeroPage_X},
-	.NOP_ZPX5 = {4, .ZeroPage_X},
-	.NOP_ZPX6 = {4, .ZeroPage_X},
-	.NOP_A = {4, .Absolute},
-	.NOP_AX = {4, .Absolute_X},
-	.NOP_AX2 = {4, .Absolute_X},
-	.NOP_AX3 = {4, .Absolute_X},
-	.NOP_AX4 = {4, .Absolute_X},
-	.NOP_AX5 = {4, .Absolute_X},
-	.NOP_AX6 = {4, .Absolute_X},
-	.ORA_IM = {2, .Immediate},
-	.ORA_ZP = {3, .ZeroPage},
-	.ORA_ZPX = {4, .ZeroPage_X},
-	.ORA_A = {4, .Absolute},
-	.ORA_AX = {4, .Absolute_X},
-	.ORA_AY = {4, .Absolute_Y},
-	.ORA_IX = {6, .Indirect_X},
-	.ORA_IY = {5, .Indirect_Y},
-	.PHA = {3, .NoneAddressing},
-	.PHP = {3, .NoneAddressing},
-	.PLA = {4, .NoneAddressing},
-	.PLP = {4, .NoneAddressing},
-	.ROL_ACC = {2, .Accumulator},
-	.ROL_ZP = {5, .ZeroPage},
-	.ROL_ZPX = {6, .ZeroPage_X},
-	.ROL_A = {6, .Absolute},
-	.ROL_AX = {7, .Absolute_X},
-	.ROR_ACC = {2, .Accumulator},
-	.ROR_ZP = {5, .ZeroPage},
-	.ROR_ZPX = {6, .ZeroPage_X},
-	.ROR_A = {6, .Absolute},
-	.ROR_AX = {7, .Absolute_X},
-	.RTI = {6, .NoneAddressing},
-	.RTS = {6, .NoneAddressing},
-	.SBC_IM = {2, .Immediate},
-	.SBC_ZP = {3, .ZeroPage},
-	.SBC_ZPX = {4, .ZeroPage_X},
-	.SBC_A = {4, .Absolute},
-	.SBC_AX = {4, .Absolute_X},
-	.SBC_AY = {4, .Absolute_Y},
-	.SBC_IX = {6, .Indirect_X},
-	.SBC_IY = {5, .Indirect_Y},
-	.SEC = {2, .NoneAddressing},
-	.SED = {2, .NoneAddressing},
-	.SEI = {2, .NoneAddressing},
-	.STA_ZP = {3, .ZeroPage},
-	.STA_ZPX = {4, .ZeroPage_X},
-	.STA_A = {4, .Absolute},
-	.STA_AX = {5, .Absolute_X},
-	.STA_AY = {5, .Absolute_Y},
-	.STA_IX = {6, .Indirect_X},
-	.STA_IY = {6, .Indirect_Y},
-	.STX_ZP = {3, .ZeroPage},
-	.STX_ZPY = {4, .ZeroPage_Y},
-	.STX_A = {4, .Absolute},
-	.STY_ZP = {3, .ZeroPage},
-	.STY_ZPX = {4, .ZeroPage_X},
-	.STY_A = {4, .Absolute},
-	.TAX = {2, .NoneAddressing},
-	.TAY = {2, .NoneAddressing},
-	.TSX = {2, .NoneAddressing},
-	.TXA = {2, .NoneAddressing},
-	.TXS = {2, .NoneAddressing},
-	.TYA = {2, .NoneAddressing},
+	.BRK = {7, .NoneAddressing, false},
+	.ADC_IM = {2, .Immediate, false},
+	.ADC_ZP = {3, .ZeroPage, false},
+	.ADC_ZPX = {4, .ZeroPage_X, false},
+	.ADC_A = {4, .Absolute, false},
+	.ADC_AX = {4, .Absolute_X, false},
+	.ADC_AY = {4, .Absolute_Y, false},
+	.ADC_IX = {6, .Indirect_X, false},
+	.ADC_IY = {5, .Indirect_Y, false},
+	.AND_IM = {2, .Immediate, false},
+	.AND_ZP = {3, .ZeroPage, false},
+	.AND_ZPX = {4, .ZeroPage_X, false},
+	.AND_A = {4, .Absolute, false},
+	.AND_AX = {4, .Absolute_X, false},
+	.AND_AY = {4, .Absolute_Y, false},
+	.AND_IX = {6, .Indirect_X, false},
+	.AND_IY = {5, .Indirect_Y, false},
+	.ASL_ACC = {2, .Accumulator, false},
+	.ASL_ZP = {5, .ZeroPage, false},
+	.ASL_ZPX = {6, .ZeroPage_X, false},
+	.ASL_A = {6, .Absolute, false},
+	.ASL_AX = {7, .Absolute_X, false},
+	.BCC = {2, .Relative, false},
+	.BCS = {2, .Relative, false},
+	.BEQ = {2, .Relative, false},
+	.BIT_ZP = {3, .ZeroPage, false},
+	.BIT_A = {4, .Absolute, false},
+	.BMI = {2, .Relative, false},
+	.BNE = {2, .Relative, false},
+	.BPL = {2, .Relative, false},
+	.BVC = {2, .Relative, false},
+	.BVS = {2, .Relative, false},
+	.CLC = {2, .NoneAddressing, false},
+	.CLD = {2, .NoneAddressing, false},
+	.CLI = {2, .NoneAddressing, false},
+	.CLV = {2, .NoneAddressing, false},
+	.CMP_IM = {2, .Immediate, false},
+	.CMP_ZP = {3, .ZeroPage, false},
+	.CMP_ZPX = {4, .ZeroPage_X, false},
+	.CMP_A = {4, .Absolute, false},
+	.CMP_AX = {4, .Absolute_X, false},
+	.CMP_AY = {4, .Absolute_Y, false},
+	.CMP_IX = {6, .Indirect_X, false},
+	.CMP_IY = {5, .Indirect_Y, false},
+	.CPX_IM = {2, .Immediate, false},
+	.CPX_ZP = {3, .ZeroPage, false},
+	.CPX_A = {4, .Absolute, false},
+	.CPY_IM = {2, .Immediate, false},
+	.CPY_ZP = {3, .ZeroPage, false},
+	.CPY_A = {4, .Absolute, false},
+	.DCP_A = {6, .Absolute, true},
+	.DCP_AX = {7, .Absolute_X, true},
+	.DCP_AY = {7, .Absolute_Y, true},
+	.DCP_IX = {8, .Indirect_X, true},
+	.DCP_IY = {8, .Indirect_Y, true},
+	.DCP_ZP = {5, .ZeroPage, true},
+	.DCP_ZPX = {6, .ZeroPage_X, true},
+	.DEC_ZP = {5, .ZeroPage, false},
+	.DEC_ZPX = {6, .ZeroPage_X, false},
+	.DEC_A = {6, .Absolute, false},
+	.DEC_AX = {7, .Absolute_X, false},
+	.DEX = {2, .NoneAddressing, false},
+	.DEY = {2, .NoneAddressing, false},
+	.EOR_IM = {2, .Immediate, false},
+	.EOR_ZP = {3, .ZeroPage, false},
+	.EOR_ZPX = {4, .ZeroPage_X, false},
+	.EOR_A = {4, .Absolute, false},
+	.EOR_AX = {4, .Absolute_X, false},
+	.EOR_AY = {4, .Absolute_Y, false},
+	.EOR_IX = {6, .Indirect_X, false},
+	.EOR_IY = {5, .Indirect_Y, false},
+	.INC_ZP = {5, .ZeroPage, false},
+	.INC_ZPX = {6, .ZeroPage_X, false},
+	.INC_A = {6, .Absolute, false},
+	.INC_AX = {7, .Absolute_X, false},
+	.INX = {2, .NoneAddressing, false},
+	.INY = {2, .NoneAddressing, false},
+	.ISB_A = {6, .Absolute, true},
+	.ISB_AX = {7, .Absolute_X, true},
+	.ISB_AY = {7, .Absolute_Y, true},
+	.ISB_IX = {8, .Indirect_X, true},
+	.ISB_IY = {8, .Indirect_Y, true},
+	.ISB_ZP = {5, .ZeroPage, true},
+	.ISB_ZPX = {6, .ZeroPage_X, true},
+	.JMP_A = {3, .Absolute, false},
+	.JMP_I = {5, .Indirect, false},
+	.JSR = {6, .Absolute, false},
+	.LAX_ZP = {3, .ZeroPage, true},
+	.LAX_ZPY = {4, .ZeroPage_Y, true},
+	.LAX_A = {4, .Absolute, true},
+	.LAX_AY = {4, .Absolute_Y, true},
+	.LAX_IX = {6, .Indirect_X, true},
+	.LAX_IY = {5, .Indirect_Y, true},
+	.LDA_IM = {2, .Immediate, false},
+	.LDA_ZP = {3, .ZeroPage, false},
+	.LDA_ZPX = {4, .ZeroPage_X, false},
+	.LDA_A = {4, .Absolute, false},
+	.LDA_AX = {4, .Absolute_X, false},
+	.LDA_AY = {4, .Absolute_Y, false},
+	.LDA_IX = {6, .Indirect_X, false},
+	.LDA_IY = {5, .Indirect_Y, false},
+	.LDX_IM = {2, .Immediate, false},
+	.LDX_ZP = {3, .ZeroPage, false},
+	.LDX_ZPY = {4, .ZeroPage_Y, false},
+	.LDX_A = {4, .Absolute, false},
+	.LDX_AY = {4, .Absolute_Y, false},
+	.LDY_IM = {2, .Immediate, false},
+	.LDY_ZP = {3, .ZeroPage, false},
+	.LDY_ZPX = {4, .ZeroPage_X, false},
+	.LDY_A = {4, .Absolute, false},
+	.LDY_AX = {4, .Absolute_X, false},
+	.LSR_ACC = {2, .Accumulator, false},
+	.LSR_ZP = {5, .ZeroPage, false},
+	.LSR_ZPX = {6, .ZeroPage_X, false},
+	.LSR_A = {6, .Absolute, false},
+	.LSR_AX = {7, .Absolute_X, false},
+	.NOP = {2, .NoneAddressing, false},
+	.NOP_U1 = {2, .NoneAddressing, true},
+	.NOP_U2 = {2, .NoneAddressing, true},
+	.NOP_U3 = {2, .NoneAddressing, true},
+	.NOP_U4 = {2, .NoneAddressing, true},
+	.NOP_U5 = {2, .NoneAddressing, true},
+	.NOP_U6 = {2, .NoneAddressing, true},
+	.NOP_I = {2, .Immediate, true},
+	.NOP_I2 = {2, .Immediate, true},
+	.NOP_I3 = {2, .Immediate, true},
+	.NOP_I4 = {2, .Immediate, true},
+	.NOP_I5 = {2, .Immediate, true},
+	.NOP_ZP = {3, .ZeroPage, true},
+	.NOP_ZP2 = {3, .ZeroPage, true},
+	.NOP_ZP3 = {3, .ZeroPage, true},
+	.NOP_ZPX = {4, .ZeroPage_X, true},
+	.NOP_ZPX2 = {4, .ZeroPage_X, true},
+	.NOP_ZPX3 = {4, .ZeroPage_X, true},
+	.NOP_ZPX4 = {4, .ZeroPage_X, true},
+	.NOP_ZPX5 = {4, .ZeroPage_X, true},
+	.NOP_ZPX6 = {4, .ZeroPage_X, true},
+	.NOP_A = {4, .Absolute, true},
+	.NOP_AX = {4, .Absolute_X, true},
+	.NOP_AX2 = {4, .Absolute_X, true},
+	.NOP_AX3 = {4, .Absolute_X, true},
+	.NOP_AX4 = {4, .Absolute_X, true},
+	.NOP_AX5 = {4, .Absolute_X, true},
+	.NOP_AX6 = {4, .Absolute_X, true},
+	.ORA_IM = {2, .Immediate, false},
+	.ORA_ZP = {3, .ZeroPage, false},
+	.ORA_ZPX = {4, .ZeroPage_X, false},
+	.ORA_A = {4, .Absolute, false},
+	.ORA_AX = {4, .Absolute_X, false},
+	.ORA_AY = {4, .Absolute_Y, false},
+	.ORA_IX = {6, .Indirect_X, false},
+	.ORA_IY = {5, .Indirect_Y, false},
+	.PHA = {3, .NoneAddressing, false},
+	.PHP = {3, .NoneAddressing, false},
+	.PLA = {4, .NoneAddressing, false},
+	.PLP = {4, .NoneAddressing, false},
+	.RLA_ZP = {5, .ZeroPage, true},
+	.RLA_ZPX = {6, .ZeroPage_X, true},
+	.RLA_A = {6, .Absolute, true},
+	.RLA_AX = {7, .Absolute_X, true},
+	.RLA_AY = {7, .Absolute_Y, true},
+	.RLA_IX = {8, .Indirect_X, true},
+	.RLA_IY = {8, .Indirect_Y, true},
+	.ROL_ACC = {2, .Accumulator, false},
+	.ROL_ZP = {5, .ZeroPage, false},
+	.ROL_ZPX = {6, .ZeroPage_X, false},
+	.ROL_A = {6, .Absolute, false},
+	.ROL_AX = {7, .Absolute_X, false},
+	.ROR_ACC = {2, .Accumulator, false},
+	.ROR_ZP = {5, .ZeroPage, false},
+	.ROR_ZPX = {6, .ZeroPage_X, false},
+	.ROR_A = {6, .Absolute, false},
+	.ROR_AX = {7, .Absolute_X, false},
+	.RRA_ZP = {5, .ZeroPage, true},
+	.RRA_ZPX = {6, .ZeroPage_X, true},
+	.RRA_A = {6, .Absolute, true},
+	.RRA_AX = {7, .Absolute_X, true},
+	.RRA_AY = {7, .Absolute_Y, true},
+	.RRA_IX = {8, .Indirect_X, true},
+	.RRA_IY = {8, .Indirect_Y, true},
+	.RTI = {6, .NoneAddressing, false},
+	.RTS = {6, .NoneAddressing, false},
+	.SAX_A = {4, .Absolute, true},
+	.SAX_ZP = {3, .ZeroPage, true},
+	.SAX_ZPY = {4, .ZeroPage_Y, true},
+	.SAX_IX = {6, .Indirect_X, true},
+	.SBC_IM = {2, .Immediate, false},
+	.SBC_IM2 = {2, .Immediate, true},
+	.SBC_ZP = {3, .ZeroPage, false},
+	.SBC_ZPX = {4, .ZeroPage_X, false},
+	.SBC_A = {4, .Absolute, false},
+	.SBC_AX = {4, .Absolute_X, false},
+	.SBC_AY = {4, .Absolute_Y, false},
+	.SBC_IX = {6, .Indirect_X, false},
+	.SBC_IY = {5, .Indirect_Y, false},
+	.SEC = {2, .NoneAddressing, false},
+	.SED = {2, .NoneAddressing, false},
+	.SEI = {2, .NoneAddressing, false},
+	.SLO_A = {6, .Absolute, true},
+	.SLO_AX = {7, .Absolute_X, true},
+	.SLO_AY = {7, .Absolute_Y, true},
+	.SLO_IX = {8, .Indirect_X, true},
+	.SLO_IY = {8, .Indirect_Y, true},
+	.SLO_ZP = {5, .ZeroPage, true},
+	.SLO_ZPX = {6, .ZeroPage_X, true},
+	.SRE_ZP = {5, .ZeroPage, true},
+	.SRE_ZPX = {6, .ZeroPage_X, true},
+	.SRE_A = {6, .Absolute, true},
+	.SRE_AX = {7, .Absolute_X, true},
+	.SRE_AY = {7, .Absolute_Y, true},
+	.SRE_IX = {8, .Indirect_X, true},
+	.SRE_IY = {8, .Indirect_Y, true},
+	.STA_ZP = {3, .ZeroPage, false},
+	.STA_ZPX = {4, .ZeroPage_X, false},
+	.STA_A = {4, .Absolute, false},
+	.STA_AX = {5, .Absolute_X, false},
+	.STA_AY = {5, .Absolute_Y, false},
+	.STA_IX = {6, .Indirect_X, false},
+	.STA_IY = {6, .Indirect_Y, false},
+	.STX_ZP = {3, .ZeroPage, false},
+	.STX_ZPY = {4, .ZeroPage_Y, false},
+	.STX_A = {4, .Absolute, false},
+	.STY_ZP = {3, .ZeroPage, false},
+	.STY_ZPX = {4, .ZeroPage_X, false},
+	.STY_A = {4, .Absolute, false},
+	.TAX = {2, .NoneAddressing, false},
+	.TAY = {2, .NoneAddressing, false},
+	.TSX = {2, .NoneAddressing, false},
+	.TXA = {2, .NoneAddressing, false},
+	.TXS = {2, .NoneAddressing, false},
+	.TYA = {2, .NoneAddressing, false},
 }
 
 OpCodeInfo :: struct {
-	nCycles: int,
-	addMode: AddressingMode,
+	nCycles:    int,
+	addMode:    AddressingMode,
+	unofficial: bool,
 }
 
 AddressingMode :: enum u8 {
@@ -633,6 +740,17 @@ dec :: proc(state: ^MOS6502, register: ^u8, bus: ^memory.Bus, addMode: Addressin
 	state.status = setNegativeFlag(value, state.status)
 }
 
+dcp :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) {
+	value := getValue8(state, bus, addMode)
+	value2 := value - 1 if value > 0 else 0
+	writeValue8(value2, state, bus, addMode)
+
+	// state.status = cy ? state.status | 1 : state.status &~ 1
+	state.status = setZeroFlag(value2, state.status)
+	state.status = setNegativeFlag(value2, state.status)
+
+}
+
 eor :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) {
 	state.a = state.a ~ getValue8(state, bus, addMode)
 	state.status = setZeroFlag(state.a, state.status)
@@ -858,20 +976,17 @@ getValue8 :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) ->
 	case .Indirect:
 		log.error("Should never be trying to get memory value with Indirect addressing mode")
 	case .Indirect_X:
-		addr := state.ix + readImmediate8(state, bus)
-		//low := memory[addr]
-		//high := memory[addr + 1]
-		low := bus.read(bus, auto_cast addr)
-		high := bus.read(bus, auto_cast (addr + 1))
-		//return memory[getCombined(high, low)]
-		return bus.read(bus, getCombined(high, low))
+		// addr := state.ix + readImmediate8(state, bus)
+		// low := bus.read(bus, auto_cast addr)
+		// high := bus.read(bus, auto_cast (addr + 1))
+		addr := getOffset(state, bus, addMode)
+		// return bus.read(bus, getCombined(high, low))
+		return bus.read(bus, addr)
 	case .Indirect_Y:
 		base := readImmediate8(state, bus)
 		low := bus.read(bus, auto_cast base)
 		high := bus.read(bus, auto_cast (base + 1))
-		//high := memory[base + 1]
 		addr := getCombined(high, low) + u16(state.iy)
-		// return memory[getCombined(high, low) + u16(state.iy)]
 		return bus.read(bus, addr)
 	case .NoneAddressing:
 		// Commented out the error message because of unofficial opcodes we
@@ -887,8 +1002,9 @@ getValue8 :: proc(state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) ->
 // Fome some instructions that act straight on the memory locations (i.e. ASL). We
 // undo the increment of the program counter and then read in the offset again in order
 // to figure out where to store the value
+// TODO: Combine switch statements where approriate
 writeValue8 :: proc(value: u8, state: ^MOS6502, bus: ^memory.Bus, addMode: AddressingMode) {
-	#partial switch addMode {
+	switch addMode {
 	case .Accumulator:
 		state.a = value
 	case .Immediate:
@@ -896,25 +1012,41 @@ writeValue8 :: proc(value: u8, state: ^MOS6502, bus: ^memory.Bus, addMode: Addre
 	case .ZeroPage:
 		state.pc -= 1
 		offset := readImmediate8(state, bus)
-		// memory[offset] = value
 		bus.write(bus, auto_cast offset, value)
 	case .ZeroPage_X:
 		state.pc -= 1
 		offset := readImmediate8(state, bus) + state.ix
-		// memory[offset] = value
 		bus.write(bus, auto_cast offset, value)
 	case .Absolute:
 		state.pc -= 2
 		offset := readImmediate16(state, bus)
-		// memory[offset] = value
 		bus.write(bus, offset, value)
 	case .Absolute_X:
 		state.pc -= 2
 		offset := readImmediate16(state, bus) + u16(state.ix)
-		// memory[offset] = value
 		bus.write(bus, offset, value)
-	case:
-		log.error("Trying to write data with unimplemented addressing mode.")
+	case .Absolute_Y:
+		undo_read(state, addMode)
+		addr := getOffset(state, bus, addMode)
+		bus.write(bus, addr, value)
+	// log.error("Writing Absolute Y not implemented")
+	case .Indirect:
+		log.error("Writing indirect not implemented")
+	case .Indirect_X:
+		undo_read(state, addMode)
+		addr := getOffset(state, bus, addMode)
+		bus.write(bus, addr, value)
+	case .Indirect_Y:
+		undo_read(state, addMode)
+		addr := getOffset(state, bus, addMode)
+		bus.write(bus, addr, value)
+	// log.error("Writing indirect Y not implemented")
+	case .NoneAddressing:
+		log.error("Can't write with none addressing")
+	case .Relative:
+		log.error("Writing with relative addressing mode not implemented")
+	case .ZeroPage_Y:
+		log.error("Writing with zero page Y not implemented")
 	}
 }
 
@@ -997,6 +1129,7 @@ writeImmediate8 :: proc(value: u8, state: ^MOS6502, bus: ^memory.Bus) {
 	//memory[state.pc - 1] = value
 }
 
+//TODO: Replace with two readImmediate8
 readImmediate16 :: proc(state: ^MOS6502, bus: ^memory.Bus) -> u16 {
 	low := bus.read(bus, auto_cast state.pc)
 	high := bus.read(bus, auto_cast state.pc + 1)
@@ -1006,6 +1139,20 @@ readImmediate16 :: proc(state: ^MOS6502, bus: ^memory.Bus) -> u16 {
 
 	return getCombined(high, low)
 	//return auto_cast (cast(^u16le)&memory[state.pc - 2])^
+}
+
+undo_read :: proc(state: ^MOS6502, add_mode: AddressingMode) {
+	/* Move the program back a number of steps based on the addressing mode. The
+	program counter should now be like it was before consuming the opcode data.
+	*/
+
+	switch add_mode {
+	case .Absolute, .Absolute_X, .Absolute_Y, .Indirect, .Relative:
+		state.pc -= 2
+	case .Immediate, .ZeroPage, .ZeroPage_X, .ZeroPage_Y, .Indirect_X, .Indirect_Y:
+		state.pc -= 1
+	case .NoneAddressing, .Accumulator:
+	}
 }
 
 emulate6502p :: proc(state: ^MOS6502, bus: ^memory.Bus) -> int {
@@ -1058,6 +1205,12 @@ emulate6502p :: proc(state: ^MOS6502, bus: ^memory.Bus) -> int {
 		compare(state, &state.ix, bus, opCodeInfo.addMode)
 	case .CPY_IM, .CPY_ZP, .CPY_A:
 		compare(state, &state.iy, bus, opCodeInfo.addMode)
+	case .DCP_A, .DCP_AX, .DCP_AY, .DCP_IX, .DCP_IY, .DCP_ZP, .DCP_ZPX:
+		// dcp(state, bus, opCodeInfo.addMode)
+		i: ^u8
+		dec(state, i, bus, opCodeInfo.addMode)
+		undo_read(state, opCodeInfo.addMode)
+		compare(state, &state.a, bus, opCodeInfo.addMode)
 	case .DEC_ZP, .DEC_ZPX, .DEC_A, .DEC_AX:
 		i: ^u8
 		dec(state, i, bus, opCodeInfo.addMode)
@@ -1074,10 +1227,18 @@ emulate6502p :: proc(state: ^MOS6502, bus: ^memory.Bus) -> int {
 		inc(state, &state.ix, bus, opCodeInfo.addMode)
 	case .INY:
 		inc(state, &state.iy, bus, opCodeInfo.addMode)
+	case .ISB_A, .ISB_AX, .ISB_AY, .ISB_IX, .ISB_IY, .ISB_ZP, .ISB_ZPX:
+		tmp: ^u8
+		inc(state, tmp, bus, opCodeInfo.addMode)
+		undo_read(state, opCodeInfo.addMode)
+		sbc(state, bus, opCodeInfo.addMode)
 	case .JMP_A, .JMP_I:
 		jump(state, bus, opCodeInfo.addMode, false)
 	case .JSR:
 		jump(state, bus, opCodeInfo.addMode, true)
+	case .LAX_A, .LAX_AY, .LAX_IX, .LAX_IY, .LAX_ZP, .LAX_ZPY:
+		loadRegister(state, &state.a, bus, opCodeInfo.addMode)
+		state.ix = state.a
 	case .LDA_IM, .LDA_ZP, .LDA_ZPX, .LDA_A, .LDA_AX, .LDA_AY, .LDA_IX, .LDA_IY:
 		loadRegister(state, &state.a, bus, opCodeInfo.addMode)
 	case .LDX_IM, .LDX_ZP, .LDX_ZPY, .LDX_A, .LDX_AY:
@@ -1109,15 +1270,25 @@ emulate6502p :: proc(state: ^MOS6502, bus: ^memory.Bus) -> int {
 		// NOTES: From my understanding bits 4/5 (starting at 0) don't actually exist
 		// in memory. The nesttest.log just pads to 8 bits with 1 and 0
 		state.status = (pop8(state, bus) | 0b0010_0000) & 0b1110_1111
+	case .RLA_A, .RLA_AX, .RLA_AY, .RLA_IX, .RLA_IY, .RLA_ZP, .RLA_ZPX:
+		shift(state, bus, opCodeInfo.addMode, true, true)
+		undo_read(state, opCodeInfo.addMode)
+		and(state, bus, opCodeInfo.addMode)
 	case .ROL_ACC, .ROL_ZP, .ROL_ZPX, .ROL_A, .ROL_AX:
 		shift(state, bus, opCodeInfo.addMode, true, true)
 	case .ROR_ACC, .ROR_ZP, .ROR_ZPX, .ROR_A, .ROR_AX:
 		shift(state, bus, opCodeInfo.addMode, true, false)
+	case .RRA_A, .RRA_AX, .RRA_AY, .RRA_IX, .RRA_IY, .RRA_ZP, .RRA_ZPX:
+		shift(state, bus, opCodeInfo.addMode, true, false)
+		undo_read(state, opCodeInfo.addMode)
+		adc(state, bus, opCodeInfo.addMode)
 	case .RTI:
 		rti(state, bus)
 	case .RTS:
 		rts(state, bus)
-	case .SBC_IM, .SBC_ZP, .SBC_ZPX, .SBC_A, .SBC_AX, .SBC_AY, .SBC_IX, .SBC_IY:
+	case .SAX_A, .SAX_IX, .SAX_ZP, .SAX_ZPY:
+		store(state.ix & state.a, state, bus, opCodeInfo.addMode)
+	case .SBC_IM, .SBC_ZP, .SBC_ZPX, .SBC_A, .SBC_AX, .SBC_AY, .SBC_IX, .SBC_IY, .SBC_IM2:
 		sbc(state, bus, opCodeInfo.addMode)
 	case .SEC:
 		setFlag(state, CarryFlag)
@@ -1125,6 +1296,14 @@ emulate6502p :: proc(state: ^MOS6502, bus: ^memory.Bus) -> int {
 		setFlag(state, DecimalModeFlag)
 	case .SEI:
 		setFlag(state, InterruptDisable)
+	case .SLO_A, .SLO_AX, .SLO_AY, .SLO_IX, .SLO_IY, .SLO_ZP, .SLO_ZPX:
+		shift(state, bus, opCodeInfo.addMode, false, true)
+		undo_read(state, opCodeInfo.addMode)
+		ora(state, bus, opCodeInfo.addMode)
+	case .SRE_A, .SRE_AX, .SRE_AY, .SRE_IX, .SRE_IY, .SRE_ZP, .SRE_ZPX:
+		shift(state, bus, opCodeInfo.addMode, false, false)
+		undo_read(state, opCodeInfo.addMode)
+		eor(state, bus, opCodeInfo.addMode)
 	case .STA_ZP, .STA_ZPX, .STA_A, .STA_AX, .STA_AY, .STA_IX, .STA_IY:
 		store(state.a, state, bus, opCodeInfo.addMode)
 	case .STX_ZP, .STX_ZPY, .STX_A:
