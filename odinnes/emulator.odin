@@ -6,7 +6,7 @@ import "core:math/rand"
 import "core:os"
 import "core:time"
 
-import "hardware:cpu"
+import "hardware:cpu/mos6502"
 import "hardware:ppu"
 import "hardware:system"
 
@@ -129,14 +129,14 @@ run :: proc(nes: ^system.NES) {
 		// fmt.println("AAA:", nes.cpu6502.pc, nes.bus.cpu_vram[nes.cpu6502.pc])
 		debug := false
 		if debug {
-			cpu.disassemble6502p(&nes.cpu6502, &nes.bus)
+			mos6502.disassemble6502p_ver2(&nes.cpu6502, &nes.bus)
 			fmt.printf(" ")
 			ppu.display_cycles()
 			fmt.printf(" ")
-			cpu.display_cycles(&nes.cpu6502, totCycles)
+			mos6502.display_cycles(&nes.cpu6502, totCycles)
 			fmt.printf("\n")
 		}
-		totCycles += cpu.emulate6502p(&nes.cpu6502, &nes.bus)
+		totCycles += mos6502.emulate6502p(&nes.cpu6502, &nes.bus)
 
 		//fmt.println("STACK:", nes.bus.cpu_vram[0x01C0:0x0200])
 		time.accurate_sleep(70000)
@@ -158,15 +158,15 @@ debug6502 :: proc() {
 	for totCycles < 30000 {
 
 		// cpu.disassemble6502p(&nes.cpu6502, &nes.bus)
-		cpu.disassemble6502p_ver2(&nes.cpu6502, &nes.bus)
-		cpu.display_registers(&nes.cpu6502)
+		mos6502.disassemble6502p_ver2(&nes.cpu6502, &nes.bus)
+		mos6502.display_registers(&nes.cpu6502)
 		fmt.printf(" ")
 		ppu.display_cycles()
 		fmt.printf(" ")
-		cpu.display_cycles(&nes.cpu6502, totCycles)
+		mos6502.display_cycles(&nes.cpu6502, totCycles)
 		fmt.printf("\n")
 
-		totCycles += cpu.emulate6502p(&nes.cpu6502, &nes.bus)
+		totCycles += mos6502.emulate6502p(&nes.cpu6502, &nes.bus)
 
 
 	}

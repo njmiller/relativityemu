@@ -3,9 +3,10 @@ package system
 import "core:fmt"
 import "core:log"
 
-import "hardware:cpu"
+import "hardware:cpu/mos6502"
 import "hardware:io"
 import "hardware:memory"
+import "hardware:ppu"
 
 Mirroring :: enum {
 	VERTICAL,
@@ -24,10 +25,11 @@ Bus :: struct {
 	using bus: memory.Bus,
 	cpu_vram:  [2048]u8,
 	rom:       Rom,
+	ppu0:      ppu.Ricoh2c02,
 }
 
 NES :: struct {
-	cpu6502: cpu.MOS6502,
+	cpu6502: mos6502.MOS6502,
 	bus:     Bus,
 }
 
@@ -68,6 +70,7 @@ bus_mem_write :: proc(bus: ^memory.Bus, addr: u16, data: u8) {
 	case PPU_REGISTERS ..= PPU_REGISTERS_MIRRORS_END:
 		mirror_down_addr := addr & 0b00100000_00000111
 		log.error("PPU is not supported yet")
+		ppu.write_ppu_data(&bus.ppu0, addr, data)
 	case 0x8000 ..= 0xFFFF:
 		log.error("Attempting to write to a cartridge ROM space.")
 	case:
