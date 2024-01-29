@@ -8,33 +8,9 @@ import "core:time"
 
 import "hardware:cpu/mos6502"
 import "hardware:ppu"
-import "hardware:system"
+import "hardware:system/nes"
 
 import rl "vendor:raylib"
-
-/*
-loadRom :: proc(file: string, memory: []u8) {
-	source, success := os.read_entire_file_from_filename(file)
-
-	copy(memory[0x8000:], source)
-	memory[0xFFFC] = 0x00
-	memory[0xFFFD] = 0x80
-}
-
-reset :: proc(state: ^cpu.MOS6502, memory: []u8) {
-	state.a = 0
-	state.ix = 0
-	state.iy = 0
-	state.status = 0
-	state.pc = auto_cast memory[0xFFFC]
-	state.sp = 0xFF
-}
-
-loadAndRun :: proc(file: string, nes: ^system.NES) {
-	loadRom(file, nes.memory)
-	reset(&nes.cpu6502, nes.memory)
-}
-*/
 
 get_color :: proc(val: u8) -> rl.Color {
 
@@ -96,7 +72,7 @@ handle_input :: proc(memory: []u8) {
 	if rl.IsKeyPressed(rl.KeyboardKey.D) do memory[0xFF] = 0x64
 }
 
-run :: proc(nes: ^system.NES) {
+run :: proc(nes1: ^nes.NES) {
 	totCycles: int
 
 	screen_state := make([]rl.Color, 0x400)
@@ -108,13 +84,13 @@ run :: proc(nes: ^system.NES) {
 	for !rl.WindowShouldClose() {
 
 		// Read user input and write it to mem[0xFF]
-		handle_input(nes.bus.cpu_vram[:])
+		handle_input(nes1.bus.cpu_vram[:])
 
 		// update mem[0xFE] with new random number
-		nes.bus.cpu_vram[0xFE] = auto_cast (0xFF & rand.uint32())
+		nes1.bus.cpu_vram[0xFE] = auto_cast (0xFF & rand.uint32())
 
 		// read mem mapped screen state
-		do_update = read_screen_state(nes.bus.cpu_vram[0x0200:0x0600], screen_state)
+		do_update = read_screen_state(nes1.bus.cpu_vram[0x0200:0x0600], screen_state)
 
 		// render screen state
 		if do_update {
@@ -129,18 +105,18 @@ run :: proc(nes: ^system.NES) {
 		// fmt.println("AAA:", nes.cpu6502.pc, nes.bus.cpu_vram[nes.cpu6502.pc])
 		debug := false
 		if debug {
-			mos6502.disassemble6502p_ver2(&nes.cpu6502, &nes.bus)
+			mos6502.disassemble6502p_ver2(&nes1.cpu6502, &nes1.bus)
 			fmt.printf(" ")
 			ppu.display_cycles()
 			fmt.printf(" ")
-			mos6502.display_cycles(&nes.cpu6502, totCycles)
+			mos6502.display_cycles(&nes1.cpu6502, totCycles)
 			fmt.printf("\n")
 		}
-		totCycles += mos6502.emulate6502p(&nes.cpu6502, &nes.bus)
+		totCycles += mos6502.emulate6502p(&nes1.cpu6502, &nes1.bus)
 
 		//fmt.println("STACK:", nes.bus.cpu_vram[0x01C0:0x0200])
 		time.accurate_sleep(70000)
-		if nes.bus.read(&nes.bus, auto_cast nes.cpu6502.pc) == 0 do break
+		if nes1.bus.read(&nes1.bus, auto_cast nes1.cpu6502.pc) == 0 do break
 		//if totCycles > 50 do break
 	}
 }
@@ -152,21 +128,21 @@ debug6502 :: proc() {
 
 	// sw: time.Stopwatch
 
-	nes := system.init_nes("games/nestest.nes")
+	nes1 := nes.init_nes("games/nestest.nes")
 
 	totCycles := 7
 	for totCycles < 30000 {
 
 		// cpu.disassemble6502p(&nes.cpu6502, &nes.bus)
-		mos6502.disassemble6502p_ver2(&nes.cpu6502, &nes.bus)
-		mos6502.display_registers(&nes.cpu6502)
+		mos6502.disassemble6502p_ver2(&nes1.cpu6502, &nes1.bus)
+		mos6502.display_registers(&nes1.cpu6502)
 		fmt.printf(" ")
 		ppu.display_cycles()
 		fmt.printf(" ")
-		mos6502.display_cycles(&nes.cpu6502, totCycles)
+		mos6502.display_cycles(&nes1.cpu6502, totCycles)
 		fmt.printf("\n")
 
-		totCycles += mos6502.emulate6502p(&nes.cpu6502, &nes.bus)
+		totCycles += mos6502.emulate6502p(&nes1.cpu6502, &nes1.bus)
 
 
 	}
@@ -494,7 +470,7 @@ test_snake_game :: proc() {
 	sw: time.Stopwatch
 
 	// nes_state: system.NES
-	nes_state := system.init_nes("TEST")
+	nes_state := nes.init_nes("TEST")
 
 	rl.InitWindow(320, 320, "Odin NES")
 	defer rl.CloseWindow()
@@ -522,7 +498,7 @@ test_snake_game :: proc() {
 
 run_game :: proc(fn: string) {
 
-	nes_state := system.init_nes(fn)
+	nes_state := nes.init_nes(fn)
 
 	rl.InitWindow(320, 320, "Odin NES")
 	defer rl.CloseWindow()
