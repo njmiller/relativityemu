@@ -1,4 +1,4 @@
-package nes
+package emulator
 
 import "core:fmt"
 import "core:log"
@@ -7,7 +7,6 @@ import "core:os"
 import "core:time"
 
 import "hardware:cpu/mos6502"
-import "hardware:ppu"
 import "hardware:system/nes"
 
 import rl "vendor:raylib"
@@ -107,7 +106,7 @@ run :: proc(nes1: ^nes.NES) {
 		if debug {
 			mos6502.disassemble6502p_ver2(&nes1.cpu6502, &nes1.bus)
 			fmt.printf(" ")
-			ppu.display_cycles()
+			nes.display_ppu_cycles()
 			fmt.printf(" ")
 			mos6502.display_cycles(&nes1.cpu6502, totCycles)
 			fmt.printf("\n")
@@ -137,7 +136,7 @@ debug6502 :: proc() {
 		mos6502.disassemble6502p_ver2(&nes1.cpu6502, &nes1.bus)
 		mos6502.display_registers(&nes1.cpu6502)
 		fmt.printf(" ")
-		ppu.display_cycles()
+		nes.display_ppu_cycles()
 		fmt.printf(" ")
 		mos6502.display_cycles(&nes1.cpu6502, totCycles)
 		fmt.printf("\n")

@@ -1,8 +1,8 @@
-package ppu
+package nes
 
 import "core:log"
 
-RicohMirroring :: enum {
+Mirroring :: enum {
 	VERTICAL,
 	HORIZONTAL,
 	FOUR_SCREEN,
@@ -13,20 +13,39 @@ Ricoh2c02 :: struct {
 	palette_table:     [32]u8,
 	vram:              [2048]u8,
 	oam_data:          [256]u8,
-	mirroring:         RicohMirroring,
+	oam_addr:          u8,
+	mirroring:         Mirroring,
 	addr:              AddrRegister,
 	ctrl:              Controller_Bitset,
+	mask:              Mask_Bitset,
+	status:            Status_Bitset,
+	scroll:            ScrollRegister,
 	internal_data_buf: u8,
+	w:                 bool,
+	v, t, x:           u8,
+	scanline:          u16,
+	cycles:            int,
 }
 
+// 0x2000 - Controller register (write) - done
+// 0x2001 - Mask register (write) - done
+// 0x2002 - Status register (read) - done
+// 0x2003 - OAM address (write)
+// 0x2004 - OAM data (read/write)
+// 0x2005 - Scroll (write x2) - done
+// 0x2006 - Address (write x2) - done
+// 0x2007 - Data (read/write)
+// 0x2009 - OAM DMA (write)
+
+// Structure and functions related to the address register
 AddrRegister :: struct {
-	value:  [2]u8,
-	hi_ptr: bool,
+	value: [2]u8,
+	// hi_ptr: bool,
 }
 
 new_addr_register :: proc() -> AddrRegister {
 	addr: AddrRegister
-	addr.hi_ptr = true
+	// addr.hi_ptr = true
 
 	return addr
 }
@@ -36,37 +55,62 @@ set_addr :: proc(addr: ^AddrRegister, data: u16) {
 	addr.value[1] = auto_cast (data & 0xFF)
 }
 
-update_addr :: proc(addr: ^AddrRegister, data: u8) {
-	if addr.hi_ptr {
+get_addr :: proc(addr: ^AddrRegister) -> u16 {
+	return (u16(addr.value[0]) << 8) | u16(addr.value[1])
+}
+
+update_addr :: proc(addr: ^AddrRegister, hi_ptr: bool, data: u8) {
+	if hi_ptr {
 		addr.value[0] = data
 	} else {
 		addr.value[1] = data
 	}
 
+	// Mirror down the address if above 0x3FFF
 	// 0x3FFF = 0b00111111_11111111
 	if int(get_addr(addr)) > 0x3FFF do set_addr(addr, get_addr(addr) & 0x3FFF)
 }
 
 increment_addr :: proc(addr: ^AddrRegister, inc: u8) {
+
+	// Increment the lower bits and if it carries then increment the higher bits by 1 
 	lo := addr.value[1]
 	addr.value[1] += inc
 	if lo > addr.value[1] do addr.value[0] += 1
 
+	// Mirror down the address if above 0x3FFF
+	// 0x3FFF = 0b00111111_11111111
 	if int(get_addr(addr)) > 0x3FFF do set_addr(addr, get_addr(addr) & 0x3FFF)
 }
 
-reset_latch_addr :: proc(addr: ^AddrRegister) {
-	addr.hi_ptr = true
+reset_latch :: proc(ppu: ^Ricoh2c02) {
+	ppu.w = true
 }
 
-get_addr :: proc(addr: ^AddrRegister) -> u16 {
-	return (u16(addr.value[0]) << 8) | u16(addr.value[1])
+write_to_addr :: proc(ppu: ^Ricoh2c02, value: u8) {
+	update_addr(&ppu.addr, ppu.w, value)
+	ppu.w = !ppu.w
 }
 
-write_to_ppu :: proc(ppu: ^Ricoh2c02, value: u8) {
-	update_addr(&ppu.addr, value)
-}
-
+// Controller Register
+// 
+// 7  bit  0
+// ---- ----
+// VPHB SINN
+// |||| ||||
+// |||| ||++- Base nametable address
+// |||| ||    (0 = $2000; 1 = $2400; 2 = $2800; 3 = $2C00)
+// |||| |+--- VRAM address increment per CPU read/write of PPUDATA
+// |||| |     (0: add 1, going across; 1: add 32, going down)
+// |||| +---- Sprite pattern table address for 8x8 sprites
+// ||||       (0: $0000; 1: $1000; ignored in 8x16 mode)
+// |||+------ Background pattern table address (0: $0000; 1: $1000)
+// ||+------- Sprite size (0: 8x8 pixels; 1: 8x16 pixels – see PPU OAM#Byte 1)
+// |+-------- PPU master/slave select
+// |          (0: read backdrop from EXT pins; 1: output color on EXT pins)
+// +--------- Generate an NMI at the start of the
+//    		  vertical blanking interval (0: off; 1: on)
+//
 Controller_Flags :: enum u8 {
 	NAMETABLE1              = 0b00000001,
 	NAMETABLE2              = 0b00000010,
@@ -80,25 +124,17 @@ Controller_Flags :: enum u8 {
 
 Controller_Bitset :: bit_set[Controller_Flags]
 
-new_controller :: proc() -> Controller_Bitset {
+new_controller_bitset :: proc() -> Controller_Bitset {
 	return Controller_Bitset{}
 }
 
 vram_addr_increment :: proc(controller: ^Controller_Bitset) -> u8 {
 	if .VRAM_ADD_INCREMENT in controller {
-		return 1
-	} else {
 		return 32
+	} else {
+		return 1
 	}
 }
-
-// Can this just be implemented in code and not a procedure
-/*
-update_controller :: proc(controller: ^Controller_Bitset, data: u8) {
-	bitset_data := get_controller_bitset(data)
-	controller^ = bitset_data
-}
-*/
 
 get_controller_bitset :: proc(data: u8) -> Controller_Bitset {
 	bitset_tmp := Controller_Bitset{}
@@ -111,11 +147,167 @@ get_controller_bitset :: proc(data: u8) -> Controller_Bitset {
 	return bitset_tmp
 }
 
+@(private = "file")
 write_to_ctrl :: proc(ppu: ^Ricoh2c02, value: u8) {
 	ppu.ctrl = get_controller_bitset(value)
 }
 
-read_ppu_data :: proc(ppu: ^Ricoh2c02) -> u8 {
+// Mask Register
+//
+// 7  bit  0
+// ---- ----
+// BGRs bMmG
+// |||| ||||
+// |||| |||+- Greyscale (0: normal color, 1: produce a greyscale display)
+// |||| ||+-- 1: Show background in leftmost 8 pixels of screen, 0: Hide
+// |||| |+--- 1: Show sprites in leftmost 8 pixels of screen, 0: Hide
+// |||| +---- 1: Show background
+// |||+------ 1: Show sprites
+// ||+------- Emphasize red (green on PAL/Dendy)
+// |+-------- Emphasize green (red on PAL/Dendy)
+// +--------- Emphasize blue
+//
+Mask_Flags :: enum u8 {
+	GREYSCALE            = 0b00000001,
+	LEFTMOST8_BACKGROUND = 0b00000010,
+	LEFTMOST8_SPRITE     = 0b00000100,
+	SHOW_BACKGROUND      = 0b00001000,
+	SHOW_SPRITES         = 0b00010000,
+	EMPHASIZE_RED        = 0b00100000,
+	EMPHASIZE_GREEN      = 0b01000000,
+	EMPHASIZE_BLUE       = 0b10000000,
+}
+
+Mask_Bitset :: bit_set[Mask_Flags]
+
+get_mask_bitset :: proc(data: u8) -> Mask_Bitset {
+	bitset_tmp := Mask_Bitset{}
+
+	for i in 0 ..< 8 {
+		bit_tmp := u8(1) << uint(i)
+		if bit_tmp & data != 0 do bitset_tmp += {Mask_Flags(bit_tmp)}
+	}
+
+	return bitset_tmp
+}
+
+@(private = "file")
+write_to_mask :: proc(ppu: ^Ricoh2c02, data: u8) {
+	ppu.mask = get_mask_bitset(data)
+}
+
+// Status Register
+// 
+// 7  bit  0
+// ---- ----
+// VSO. ....
+// |||| ||||
+// |||+-++++- PPU open bus. Returns stale PPU bus contents.
+// ||+------- Sprite overflow. The intent was for this flag to be set
+// ||         whenever more than eight sprites appear on a scanline, but a
+// ||         hardware bug causes the actual behavior to be more complicated
+// ||         and generate false positives as well as false negatives; see
+// ||         PPU sprite evaluation. This flag is set during sprite
+// ||         evaluation and cleared at dot 1 (the second dot) of the
+// ||         pre-render line.
+// |+-------- Sprite 0 Hit.  Set when a nonzero pixel of sprite 0 overlaps
+// |          a nonzero background pixel; cleared at dot 1 of the pre-render
+// |          line.  Used for raster timing.
+// +--------- Vertical blank has started (0: not in vblank; 1: in vblank).
+//    		  Set at dot 1 of line 241 (the line *after* the post-render
+//    		  line); cleared after reading $2002 and at dot 1 of the
+//    		  pre-render line.
+//
+Status_Flags :: enum u8 {
+	SPRITE_OVERFLOW = 0b00100000,
+	SPRITE_0_HIT    = 0b01000000,
+	VERTICAL_BLANK  = 0b10000000,
+}
+
+Status_Bitset :: bit_set[Status_Flags]
+
+set_sprite_overflow :: proc(status: Status_Bitset, set: bool) -> Status_Bitset {
+	if set {
+		return status + {.SPRITE_OVERFLOW}
+	} else {
+		return status - {.SPRITE_OVERFLOW}
+	}
+}
+
+set_sprite_0_hit :: proc(status: Status_Bitset, set: bool) -> Status_Bitset {
+	if set {
+		return status + {.SPRITE_0_HIT}
+	} else {
+		return status - {.SPRITE_0_HIT}
+	}
+}
+
+set_vertical_blank :: proc(status: Status_Bitset, set: bool) -> Status_Bitset {
+	if set {
+		return status + {.VERTICAL_BLANK}
+	} else {
+		return status - {.VERTICAL_BLANK}
+	}
+}
+
+get_status_bitset :: proc(data: u8) -> Status_Bitset {
+	bitset_tmp := Status_Bitset{}
+
+	for i in 5 ..< 8 {
+		bit_tmp := u8(1) << uint(i)
+		if bit_tmp & data != 0 do bitset_tmp += {Status_Flags(bit_tmp)}
+	}
+
+	return bitset_tmp
+}
+
+@(private = "file")
+read_status :: proc(ppu: ^Ricoh2c02) -> u8 {
+
+	stat_u8: u8 = 0
+
+	// Reading status resets the w register.
+	reset_latch(ppu)
+
+	if .SPRITE_OVERFLOW in ppu.status do stat_u8 |= u8(Status_Flags.SPRITE_OVERFLOW)
+	if .SPRITE_0_HIT in ppu.status do stat_u8 |= u8(Status_Flags.SPRITE_0_HIT)
+	if .VERTICAL_BLANK in ppu.status do stat_u8 |= u8(Status_Flags.VERTICAL_BLANK)
+
+	return stat_u8
+}
+
+write_oamaddr :: proc(ppu: ^Ricoh2c02, mem_addr: u8) {
+	ppu.oam_addr = mem_addr
+}
+
+read_oamdata :: proc(ppu: ^Ricoh2c02) -> u8 {
+	return ppu.oam_data[ppu.oam_addr]
+}
+
+write_oamdata :: proc(ppu: ^Ricoh2c02, data: u8) {
+	ppu.oam_data[ppu.oam_addr] = data
+	ppu.oam_addr += 1
+}
+
+ScrollRegister :: struct {
+	x_scroll: u8,
+	y_scroll: u8,
+}
+
+@(private = "file")
+write_to_scroll :: proc(ppu: ^Ricoh2c02, data: u8) {
+
+	if ppu.w {
+		ppu.scroll.x_scroll = data
+	} else {
+		ppu.scroll.y_scroll = data
+	}
+
+	ppu.w = !ppu.w
+}
+
+@(private = "file")
+read_data :: proc(ppu: ^Ricoh2c02) -> u8 {
 	mem_addr := get_addr(&ppu.addr)
 	increment_vram_addr(ppu)
 
@@ -126,10 +318,11 @@ read_ppu_data :: proc(ppu: ^Ricoh2c02) -> u8 {
 		ppu.internal_data_buf = ppu.chr_rom[mem_addr]
 	case 0x2000 ..= 0x2FFF:
 		result = ppu.internal_data_buf
-		ppu.internal_data_buf = ppu.vram[mirror_vram_addr(mem_addr)]
+		ppu.internal_data_buf = ppu.vram[mirror_vram_addr(mem_addr, ppu.mirroring)]
 	case 0x3000 ..= 0x3EFF:
 		log.error("Address space 0x3000..0x3EFF is not expected to be used:", mem_addr)
 	case 0x3F00 ..= 0x3FFF:
+		// Don't need a dummy read for palette table
 		result = ppu.palette_table[(mem_addr - 0x3F00)]
 	}
 	return result
@@ -139,10 +332,93 @@ increment_vram_addr :: proc(ppu: ^Ricoh2c02) {
 	increment_addr(&ppu.addr, vram_addr_increment(&ppu.ctrl))
 }
 
-mirror_vram_addr :: proc(mem_addr: u16) -> u16 {
+// TODO: Mirroring
+mirror_vram_addr :: proc(mem_addr: u16, mirroring: Mirroring) -> u16 {
+	mirrored_vram := mem_addr & 0b10111111111111
+	vram_idx := mirrored_vram - 0x2000
+	name_table := vram_idx / 0x400
+
+	mem_addr_out := vram_idx
+	switch mirroring {
+	case .VERTICAL:
+		if name_table == 2 || name_table == 3 do mem_addr_out = vram_idx - 0x800
+	case .HORIZONTAL:
+		if name_table == 1 || name_table == 2 {
+			mem_addr_out = vram_idx - 0x400
+		} else if name_table == 3 {
+			mem_addr_out = vram_idx - 0x800
+		}
+	case .FOUR_SCREEN:
+	}
 	return mem_addr
 }
 
-write_ppu_data :: proc(ppu: ^Ricoh2c02, mem_addr: u16, value: u8) {
+// Functions called from the bus.read and bus.write functions to
+// read and write to the data accessed through the PPU
+read_ppu :: proc(ppu: ^Ricoh2c02, mem_addr: u16) -> u8 {
 
+	mem_val: u8
+
+	switch mem_addr {
+	case 0x2000, 0x2001, 0x2003, 0x2005, 0x2006:
+		log.panic("Attempt to read from write-only PPU address:", mem_addr)
+	case 0x2002:
+		mem_val = read_status(ppu)
+	case 0x2004:
+	case 0x2007:
+		mem_val = read_data(ppu)
+	case:
+		log.panic("Attempting to access bad or mirrored addresses.")
+	// case 0x2008 ..= PPU_REGISTERS_MIRRORS_END:
+	// Calculate what address this address mirrors and then
+	// read from that address
+	// mirror_down_addr := mem_addr & 0b00100000_00000111
+	// mem_val = read_ppu(ppu, mirror_down_addr)
+	}
+
+	return mem_val
+}
+
+write_ppu :: proc(ppu: ^Ricoh2c02, mem_addr: u16, data: u8) {
+	switch mem_addr {
+	case 0x2000:
+		write_to_ctrl(ppu, data)
+	case 0x2001:
+		write_to_mask(ppu, data)
+	// case 0x2002:
+	// write_to_status(ppu, data)
+	case 0x2002:
+		log.panic("Attempting to write to status which is read only")
+	case 0x2003:
+	case 0x2004:
+	case 0x2005:
+		write_to_scroll(ppu, data)
+	case 0x2006:
+		write_to_addr(ppu, data)
+	case 0x2007:
+	case:
+		log.panic("Attempt to access bad or mirrored PPU addresses:", mem_addr)
+	}
+}
+
+tick_ppu :: proc(ppu: ^Ricoh2c02, ncycles: int) -> bool {
+	ppu.cycles += ncycles
+	if ppu.cycles >= 341 {
+		ppu.cycles -= 341
+		ppu.scanline += 1
+
+		if ppu.scanline == 241 {
+			if generate_vblank_nmi() {
+				ppu.status = set_vertical_blank(ppu.status, true)
+				log.warn("Should trigger NMI interrupt.")
+			}
+		}
+
+		if ppu.scanline >= 262 {
+			ppu.scanline = 0
+			ppu.status = set_vertical_blank(ppu.status, false)
+			return true
+		}
+	}
+	return false
 }

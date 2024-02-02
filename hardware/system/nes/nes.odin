@@ -1,31 +1,17 @@
-package system
+package nes
 
 import "core:fmt"
 import "core:log"
 
 import "hardware:cpu/mos6502"
-import "hardware:io"
-import "hardware:memory"
-import "hardware:ppu"
-
-Mirroring :: enum {
-	VERTICAL,
-	HORIZONTAL,
-	FOUR_SCREEN,
-}
-
-Rom :: struct {
-	prg_rom:          []u8,
-	chr_rom:          []u8,
-	mapper:           u8,
-	screen_mirroring: Mirroring,
-}
 
 Bus :: struct {
-	using bus: memory.Bus,
+	using bus: mos6502.Bus,
 	cpu_vram:  [2048]u8,
-	rom:       Rom,
-	ppu0:      ppu.Ricoh2c02,
+	prg_rom:   []u8,
+	// rom:       Rom,
+	ppu0:      Ricoh2c02,
+	mapper:    u8,
 }
 
 NES :: struct {
@@ -38,7 +24,7 @@ RAM_MIRRORS_END: u16 : 0x1FFF
 PPU_REGISTERS: u16 : 0x2000
 PPU_REGISTERS_MIRRORS_END: u16 : 0x3FFF
 
-bus_mem_read :: proc(bus: ^memory.Bus, addr: u16) -> u8 {
+bus_mem_read :: proc(bus: ^mos6502.Bus, addr: u16) -> u8 {
 	bus := cast(^Bus)bus
 	mem_val: u8
 
@@ -48,10 +34,18 @@ bus_mem_read :: proc(bus: ^memory.Bus, addr: u16) -> u8 {
 		mem_val = bus.cpu_vram[mirror_down_addr]
 	case PPU_REGISTERS ..= PPU_REGISTERS_MIRRORS_END:
 		mirror_down_addr := addr & 0b00100000_00000111
-		log.fatal("PPU is not supported yet")
-		mem_val = 0
+		mem_val = read_ppu(&bus.ppu0, mirror_down_addr)
+	// case 0x2000, 0x2001, 0x2003, 0x2005, 0x2006, 0x4014:
+	// log.panic("Attempt to read from write-only PPU address:", addr)
+	// case 0x2007:
+	// mem_val = read_ppu_data(&bus.ppu0)
+	// case 0x2008 ..= PPU_REGISTERS_MIRRORS_END:
+	// Calculate what address this address mirrors and then
+	// read from that address
+	// mirror_down_addr := addr & 0b00100000_00000111
+	// mem_val = bus_mem_read(bus, mirror_down_addr)
 	case 0x8000 ..= 0xFFFF:
-		mem_val = prg_read(bus.rom.prg_rom, addr)
+		mem_val = prg_read(bus.prg_rom, addr)
 	case:
 		log.warn("Ignoring mem access at ", addr)
 		mem_val = 0
@@ -60,7 +54,9 @@ bus_mem_read :: proc(bus: ^memory.Bus, addr: u16) -> u8 {
 	return mem_val
 }
 
-bus_mem_write :: proc(bus: ^memory.Bus, addr: u16, data: u8) {
+// Maybe rewrite back as PPU_REGISTERS ..= PPU_REGISTERS_END and move
+// the switch statements here to a separate PPU read/write function
+bus_mem_write :: proc(bus: ^mos6502.Bus, addr: u16, data: u8) {
 	bus := cast(^Bus)bus
 
 	switch addr {
@@ -69,12 +65,34 @@ bus_mem_write :: proc(bus: ^memory.Bus, addr: u16, data: u8) {
 		bus.cpu_vram[mirror_down_addr] = data
 	case PPU_REGISTERS ..= PPU_REGISTERS_MIRRORS_END:
 		mirror_down_addr := addr & 0b00100000_00000111
-		log.error("PPU is not supported yet")
-		ppu.write_ppu_data(&bus.ppu0, addr, data)
+		write_ppu(&bus.ppu0, mirror_down_addr, data)
+	// case 0x2000:
+	// write_to_ctrl(&bus.ppu0, data)
+	// case 0x2006:
+	// write_to_ppu_addr(&bus.ppu0, data)
+	// case 0x2008 ..= PPU_REGISTERS_MIRRORS_END:
+	// Calculate what address this address mirrors and write
+	// to that address
+	// mirror_down_addr := addr & 0b00100000_00000111
+	// bus_mem_write(bus, mirror_down_addr, data)
+	case 0x4014:
+		// PPU OAM DMA must be here as it needs to be able to access the
+		// full memory bus to copy a page of data
+		ppu_oam_data_write(bus, data)
 	case 0x8000 ..= 0xFFFF:
 		log.error("Attempting to write to a cartridge ROM space.")
 	case:
 		fmt.println("Ignoring mem write-access at", addr)
+	}
+}
+
+ppu_oam_data_write :: proc(bus: ^Bus, addr: u8) {
+
+	addr_min := (u16(addr) << 8) | 0
+	addr_max := (u16(addr) << 8) | 0xFF
+
+	for i in 0 ..< 256 {
+		bus.ppu0.oam_data[i] = bus.read(bus, u16(i) + addr_min)
 	}
 }
 
@@ -96,8 +114,18 @@ init_nes :: proc(fn: string) -> NES {
 	// The NES version of the CPU does not implement decimal mode
 	nes.cpu6502.dm_avail = false
 
-	rom := load_rom(fn)
-	nes.bus.rom = rom
+	// rom := load_rom(fn)
+	// nes.bus.rom = rom
+
+	prg_rom, chr_rom, mapper, mirroring := read_ines(fn)
+
+	nes.bus.prg_rom = prg_rom
+	nes.bus.mapper = mapper
+
+	if mirroring == 0 do nes.bus.ppu0.mirroring = .VERTICAL
+	if mirroring == 1 do nes.bus.ppu0.mirroring = .HORIZONTAL
+	if mirroring == 2 do nes.bus.ppu0.mirroring = .FOUR_SCREEN
+
 	reset(&nes)
 
 	return nes
@@ -129,26 +157,23 @@ reset :: proc(nes: ^NES) {
 
 }
 
-load_rom :: proc(fn: string) -> Rom {
-	prg_rom, chr_rom, mapper, mirroring := io.read_ines(fn)
+// Checks whether a NMI interrupt was generated
+poll_nmi_status :: proc(bus: ^Bus) -> bool {
+	return false
+}
 
-	mirr_enum: Mirroring
-	if mirroring == 0 {
-		mirr_enum = Mirroring.HORIZONTAL
-	} else if mirroring == 1 {
-		mirr_enum = Mirroring.VERTICAL
-	} else if mirroring == 2 {
-		mirr_enum = Mirroring.FOUR_SCREEN
-	} else {
-		log.error("Mirroring value is not valid")
+run :: proc(nes: ^NES) {
+
+	num_cycles, tot_cycles: int
+	for {
+		if poll_nmi_status(bus) do interrupt_nmi()
+		// Execute next instruction and determine how long it took
+		num_cycles = mos6502.emulate6502p(&nes.cpu6502, &nes.bus)
+		tot_cycles += num_cycles
+
+		// Play catch-up with the PPU. Since it runs 3 times as fast execute
+		// 3 times the number of cycles
+		tick_ppu(&nes.bus.ppu0, 3 * num_cycles)
+
 	}
-
-	rom_out := Rom {
-		prg_rom          = prg_rom,
-		chr_rom          = chr_rom,
-		mapper           = mapper,
-		screen_mirroring = mirr_enum,
-	}
-
-	return rom_out
 }

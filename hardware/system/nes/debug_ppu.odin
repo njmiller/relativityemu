@@ -1,7 +1,7 @@
-package ppu
+package nes
 
 import "core:fmt"
 
-display_cycles :: proc() {
+display_ppu_cycles :: proc() {
 	fmt.printf("PPU:  0, 21")
 }

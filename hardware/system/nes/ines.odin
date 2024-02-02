@@ -1,4 +1,4 @@
-package emuio
+package nes
 
 import "core:fmt"
 import "core:log"

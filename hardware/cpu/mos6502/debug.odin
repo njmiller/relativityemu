@@ -28,7 +28,7 @@ absolute_instruction :: proc(
 	text: string,
 	register: string,
 	cpu: ^MOS6502,
-	bus: ^memory.Bus,
+	bus: ^Bus,
 	extra: bool = true,
 	unofficial: bool = false,
 ) -> int {
@@ -79,7 +79,7 @@ zero_page_instruction :: proc(
 	text: string,
 	register: string,
 	cpu: ^MOS6502,
-	bus: ^memory.Bus,
+	bus: ^Bus,
 	unofficial: bool = false,
 ) -> int {
 	value := bus.read(bus, auto_cast cpu.pc + 1)
@@ -126,7 +126,7 @@ zero_page_instruction :: proc(
 immediate_instruction :: proc(
 	text: string,
 	cpu: ^MOS6502,
-	bus: ^memory.Bus,
+	bus: ^Bus,
 	relative: bool = false,
 	unofficial: bool = false,
 ) -> int {
@@ -155,7 +155,7 @@ immediate_instruction :: proc(
 	return 2
 }
 
-indirect_instruction :: proc(text: string, cpu: ^MOS6502, bus: ^memory.Bus) -> int {
+indirect_instruction :: proc(text: string, cpu: ^MOS6502, bus: ^Bus) -> int {
 	val1 := bus.read(bus, auto_cast cpu.pc + 1)
 	val2 := bus.read(bus, auto_cast cpu.pc + 2)
 	fmt.printf("%02X %02X  ", val1, val2)
@@ -184,7 +184,7 @@ indirect_instruction :: proc(text: string, cpu: ^MOS6502, bus: ^memory.Bus) -> i
 indirect_x_instruction :: proc(
 	text: string,
 	cpu: ^MOS6502,
-	bus: ^memory.Bus,
+	bus: ^Bus,
 	unofficial: bool = false,
 ) -> int {
 	value := bus.read(bus, auto_cast cpu.pc + 1)
@@ -213,7 +213,7 @@ indirect_x_instruction :: proc(
 indirect_y_instruction :: proc(
 	text: string,
 	cpu: ^MOS6502,
-	bus: ^memory.Bus,
+	bus: ^Bus,
 	unofficial: bool = false,
 ) -> int {
 	value := bus.read(bus, auto_cast cpu.pc + 1)
@@ -249,7 +249,7 @@ display_cycles :: proc(cpu: ^MOS6502, ncycles: int) {
 	fmt.printf("CYC:%i", ncycles)
 }
 
-disassemble6502p_ver2 :: proc(cpu: ^MOS6502, bus: ^memory.Bus) -> int {
+disassemble6502p_ver2 :: proc(cpu: ^MOS6502, bus: ^Bus) -> int {
 	pc := cpu.pc
 	opcode: OpCode = auto_cast bus.read(bus, auto_cast pc)
 
@@ -318,7 +318,7 @@ disassemble6502p_ver2 :: proc(cpu: ^MOS6502, bus: ^memory.Bus) -> int {
 
 /*
 // Try to match the output of the nestest log
-disassemble6502p :: proc(cpu: ^MOS6502, bus: ^memory.Bus) -> int {
+disassemble6502p :: proc(cpu: ^MOS6502, bus: ^Bus) -> int {
 	// opcode: OpCode = auto_cast memory[pc]
 	pc := cpu.pc
 

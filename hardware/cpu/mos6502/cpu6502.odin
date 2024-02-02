@@ -4,11 +4,19 @@ import "core:fmt"
 import "core:log"
 import "core:math/bits"
 
-import "hardware:memory"
+// import "hardware:memory"
 
 // TODO: Maybe move bus definition here instead of in a separate file as the bus is how the
 // CPU interacts with the rest of the system and any system could still extend that structure
 // like I am doing now
+
+ReadFn :: #type proc(bus: ^Bus, addr: u16) -> u8
+WriteFn :: #type proc(bus: ^Bus, addr: u16, data: u8)
+
+Bus :: struct {
+	read:  ReadFn,
+	write: WriteFn,
+}
 
 OpCode :: enum u8 {
 	BRK      = 0x00,
@@ -245,237 +253,237 @@ OpCode :: enum u8 {
 }
 
 AddModeMap := map[OpCode]OpCodeInfo {
-	.BRK = {7, .NoneAddressing, false},
-	.ADC_IM = {2, .Immediate, false},
-	.ADC_ZP = {3, .ZeroPage, false},
-	.ADC_ZPX = {4, .ZeroPage_X, false},
-	.ADC_A = {4, .Absolute, false},
-	.ADC_AX = {4, .Absolute_X, false},
-	.ADC_AY = {4, .Absolute_Y, false},
-	.ADC_IX = {6, .Indirect_X, false},
-	.ADC_IY = {5, .Indirect_Y, false},
-	.AND_IM = {2, .Immediate, false},
-	.AND_ZP = {3, .ZeroPage, false},
-	.AND_ZPX = {4, .ZeroPage_X, false},
-	.AND_A = {4, .Absolute, false},
-	.AND_AX = {4, .Absolute_X, false},
-	.AND_AY = {4, .Absolute_Y, false},
-	.AND_IX = {6, .Indirect_X, false},
-	.AND_IY = {5, .Indirect_Y, false},
-	.ASL_ACC = {2, .Accumulator, false},
-	.ASL_ZP = {5, .ZeroPage, false},
-	.ASL_ZPX = {6, .ZeroPage_X, false},
-	.ASL_A = {6, .Absolute, false},
-	.ASL_AX = {7, .Absolute_X, false},
-	.BCC = {2, .Relative, false},
-	.BCS = {2, .Relative, false},
-	.BEQ = {2, .Relative, false},
-	.BIT_ZP = {3, .ZeroPage, false},
-	.BIT_A = {4, .Absolute, false},
-	.BMI = {2, .Relative, false},
-	.BNE = {2, .Relative, false},
-	.BPL = {2, .Relative, false},
-	.BVC = {2, .Relative, false},
-	.BVS = {2, .Relative, false},
-	.CLC = {2, .NoneAddressing, false},
-	.CLD = {2, .NoneAddressing, false},
-	.CLI = {2, .NoneAddressing, false},
-	.CLV = {2, .NoneAddressing, false},
-	.CMP_IM = {2, .Immediate, false},
-	.CMP_ZP = {3, .ZeroPage, false},
-	.CMP_ZPX = {4, .ZeroPage_X, false},
-	.CMP_A = {4, .Absolute, false},
-	.CMP_AX = {4, .Absolute_X, false},
-	.CMP_AY = {4, .Absolute_Y, false},
-	.CMP_IX = {6, .Indirect_X, false},
-	.CMP_IY = {5, .Indirect_Y, false},
-	.CPX_IM = {2, .Immediate, false},
-	.CPX_ZP = {3, .ZeroPage, false},
-	.CPX_A = {4, .Absolute, false},
-	.CPY_IM = {2, .Immediate, false},
-	.CPY_ZP = {3, .ZeroPage, false},
-	.CPY_A = {4, .Absolute, false},
-	.DCP_A = {6, .Absolute, true},
-	.DCP_AX = {7, .Absolute_X, true},
-	.DCP_AY = {7, .Absolute_Y, true},
-	.DCP_IX = {8, .Indirect_X, true},
-	.DCP_IY = {8, .Indirect_Y, true},
-	.DCP_ZP = {5, .ZeroPage, true},
-	.DCP_ZPX = {6, .ZeroPage_X, true},
-	.DEC_ZP = {5, .ZeroPage, false},
-	.DEC_ZPX = {6, .ZeroPage_X, false},
-	.DEC_A = {6, .Absolute, false},
-	.DEC_AX = {7, .Absolute_X, false},
-	.DEX = {2, .NoneAddressing, false},
-	.DEY = {2, .NoneAddressing, false},
-	.EOR_IM = {2, .Immediate, false},
-	.EOR_ZP = {3, .ZeroPage, false},
-	.EOR_ZPX = {4, .ZeroPage_X, false},
-	.EOR_A = {4, .Absolute, false},
-	.EOR_AX = {4, .Absolute_X, false},
-	.EOR_AY = {4, .Absolute_Y, false},
-	.EOR_IX = {6, .Indirect_X, false},
-	.EOR_IY = {5, .Indirect_Y, false},
-	.INC_ZP = {5, .ZeroPage, false},
-	.INC_ZPX = {6, .ZeroPage_X, false},
-	.INC_A = {6, .Absolute, false},
-	.INC_AX = {7, .Absolute_X, false},
-	.INX = {2, .NoneAddressing, false},
-	.INY = {2, .NoneAddressing, false},
-	.ISB_A = {6, .Absolute, true},
-	.ISB_AX = {7, .Absolute_X, true},
-	.ISB_AY = {7, .Absolute_Y, true},
-	.ISB_IX = {8, .Indirect_X, true},
-	.ISB_IY = {8, .Indirect_Y, true},
-	.ISB_ZP = {5, .ZeroPage, true},
-	.ISB_ZPX = {6, .ZeroPage_X, true},
-	.JMP_A = {3, .Absolute, false},
-	.JMP_I = {5, .Indirect, false},
-	.JSR = {6, .Absolute, false},
-	.LAX_ZP = {3, .ZeroPage, true},
-	.LAX_ZPY = {4, .ZeroPage_Y, true},
-	.LAX_A = {4, .Absolute, true},
-	.LAX_AY = {4, .Absolute_Y, true},
-	.LAX_IX = {6, .Indirect_X, true},
-	.LAX_IY = {5, .Indirect_Y, true},
-	.LDA_IM = {2, .Immediate, false},
-	.LDA_ZP = {3, .ZeroPage, false},
-	.LDA_ZPX = {4, .ZeroPage_X, false},
-	.LDA_A = {4, .Absolute, false},
-	.LDA_AX = {4, .Absolute_X, false},
-	.LDA_AY = {4, .Absolute_Y, false},
-	.LDA_IX = {6, .Indirect_X, false},
-	.LDA_IY = {5, .Indirect_Y, false},
-	.LDX_IM = {2, .Immediate, false},
-	.LDX_ZP = {3, .ZeroPage, false},
-	.LDX_ZPY = {4, .ZeroPage_Y, false},
-	.LDX_A = {4, .Absolute, false},
-	.LDX_AY = {4, .Absolute_Y, false},
-	.LDY_IM = {2, .Immediate, false},
-	.LDY_ZP = {3, .ZeroPage, false},
-	.LDY_ZPX = {4, .ZeroPage_X, false},
-	.LDY_A = {4, .Absolute, false},
-	.LDY_AX = {4, .Absolute_X, false},
-	.LSR_ACC = {2, .Accumulator, false},
-	.LSR_ZP = {5, .ZeroPage, false},
-	.LSR_ZPX = {6, .ZeroPage_X, false},
-	.LSR_A = {6, .Absolute, false},
-	.LSR_AX = {7, .Absolute_X, false},
-	.NOP = {2, .NoneAddressing, false},
-	.NOP_U1 = {2, .NoneAddressing, true},
-	.NOP_U2 = {2, .NoneAddressing, true},
-	.NOP_U3 = {2, .NoneAddressing, true},
-	.NOP_U4 = {2, .NoneAddressing, true},
-	.NOP_U5 = {2, .NoneAddressing, true},
-	.NOP_U6 = {2, .NoneAddressing, true},
-	.NOP_I = {2, .Immediate, true},
-	.NOP_I2 = {2, .Immediate, true},
-	.NOP_I3 = {2, .Immediate, true},
-	.NOP_I4 = {2, .Immediate, true},
-	.NOP_I5 = {2, .Immediate, true},
-	.NOP_ZP = {3, .ZeroPage, true},
-	.NOP_ZP2 = {3, .ZeroPage, true},
-	.NOP_ZP3 = {3, .ZeroPage, true},
-	.NOP_ZPX = {4, .ZeroPage_X, true},
+	.BRK      = {7, .NoneAddressing, false},
+	.ADC_IM   = {2, .Immediate, false},
+	.ADC_ZP   = {3, .ZeroPage, false},
+	.ADC_ZPX  = {4, .ZeroPage_X, false},
+	.ADC_A    = {4, .Absolute, false},
+	.ADC_AX   = {4, .Absolute_X, false},
+	.ADC_AY   = {4, .Absolute_Y, false},
+	.ADC_IX   = {6, .Indirect_X, false},
+	.ADC_IY   = {5, .Indirect_Y, false},
+	.AND_IM   = {2, .Immediate, false},
+	.AND_ZP   = {3, .ZeroPage, false},
+	.AND_ZPX  = {4, .ZeroPage_X, false},
+	.AND_A    = {4, .Absolute, false},
+	.AND_AX   = {4, .Absolute_X, false},
+	.AND_AY   = {4, .Absolute_Y, false},
+	.AND_IX   = {6, .Indirect_X, false},
+	.AND_IY   = {5, .Indirect_Y, false},
+	.ASL_ACC  = {2, .Accumulator, false},
+	.ASL_ZP   = {5, .ZeroPage, false},
+	.ASL_ZPX  = {6, .ZeroPage_X, false},
+	.ASL_A    = {6, .Absolute, false},
+	.ASL_AX   = {7, .Absolute_X, false},
+	.BCC      = {2, .Relative, false},
+	.BCS      = {2, .Relative, false},
+	.BEQ      = {2, .Relative, false},
+	.BIT_ZP   = {3, .ZeroPage, false},
+	.BIT_A    = {4, .Absolute, false},
+	.BMI      = {2, .Relative, false},
+	.BNE      = {2, .Relative, false},
+	.BPL      = {2, .Relative, false},
+	.BVC      = {2, .Relative, false},
+	.BVS      = {2, .Relative, false},
+	.CLC      = {2, .NoneAddressing, false},
+	.CLD      = {2, .NoneAddressing, false},
+	.CLI      = {2, .NoneAddressing, false},
+	.CLV      = {2, .NoneAddressing, false},
+	.CMP_IM   = {2, .Immediate, false},
+	.CMP_ZP   = {3, .ZeroPage, false},
+	.CMP_ZPX  = {4, .ZeroPage_X, false},
+	.CMP_A    = {4, .Absolute, false},
+	.CMP_AX   = {4, .Absolute_X, false},
+	.CMP_AY   = {4, .Absolute_Y, false},
+	.CMP_IX   = {6, .Indirect_X, false},
+	.CMP_IY   = {5, .Indirect_Y, false},
+	.CPX_IM   = {2, .Immediate, false},
+	.CPX_ZP   = {3, .ZeroPage, false},
+	.CPX_A    = {4, .Absolute, false},
+	.CPY_IM   = {2, .Immediate, false},
+	.CPY_ZP   = {3, .ZeroPage, false},
+	.CPY_A    = {4, .Absolute, false},
+	.DCP_A    = {6, .Absolute, true},
+	.DCP_AX   = {7, .Absolute_X, true},
+	.DCP_AY   = {7, .Absolute_Y, true},
+	.DCP_IX   = {8, .Indirect_X, true},
+	.DCP_IY   = {8, .Indirect_Y, true},
+	.DCP_ZP   = {5, .ZeroPage, true},
+	.DCP_ZPX  = {6, .ZeroPage_X, true},
+	.DEC_ZP   = {5, .ZeroPage, false},
+	.DEC_ZPX  = {6, .ZeroPage_X, false},
+	.DEC_A    = {6, .Absolute, false},
+	.DEC_AX   = {7, .Absolute_X, false},
+	.DEX      = {2, .NoneAddressing, false},
+	.DEY      = {2, .NoneAddressing, false},
+	.EOR_IM   = {2, .Immediate, false},
+	.EOR_ZP   = {3, .ZeroPage, false},
+	.EOR_ZPX  = {4, .ZeroPage_X, false},
+	.EOR_A    = {4, .Absolute, false},
+	.EOR_AX   = {4, .Absolute_X, false},
+	.EOR_AY   = {4, .Absolute_Y, false},
+	.EOR_IX   = {6, .Indirect_X, false},
+	.EOR_IY   = {5, .Indirect_Y, false},
+	.INC_ZP   = {5, .ZeroPage, false},
+	.INC_ZPX  = {6, .ZeroPage_X, false},
+	.INC_A    = {6, .Absolute, false},
+	.INC_AX   = {7, .Absolute_X, false},
+	.INX      = {2, .NoneAddressing, false},
+	.INY      = {2, .NoneAddressing, false},
+	.ISB_A    = {6, .Absolute, true},
+	.ISB_AX   = {7, .Absolute_X, true},
+	.ISB_AY   = {7, .Absolute_Y, true},
+	.ISB_IX   = {8, .Indirect_X, true},
+	.ISB_IY   = {8, .Indirect_Y, true},
+	.ISB_ZP   = {5, .ZeroPage, true},
+	.ISB_ZPX  = {6, .ZeroPage_X, true},
+	.JMP_A    = {3, .Absolute, false},
+	.JMP_I    = {5, .Indirect, false},
+	.JSR      = {6, .Absolute, false},
+	.LAX_ZP   = {3, .ZeroPage, true},
+	.LAX_ZPY  = {4, .ZeroPage_Y, true},
+	.LAX_A    = {4, .Absolute, true},
+	.LAX_AY   = {4, .Absolute_Y, true},
+	.LAX_IX   = {6, .Indirect_X, true},
+	.LAX_IY   = {5, .Indirect_Y, true},
+	.LDA_IM   = {2, .Immediate, false},
+	.LDA_ZP   = {3, .ZeroPage, false},
+	.LDA_ZPX  = {4, .ZeroPage_X, false},
+	.LDA_A    = {4, .Absolute, false},
+	.LDA_AX   = {4, .Absolute_X, false},
+	.LDA_AY   = {4, .Absolute_Y, false},
+	.LDA_IX   = {6, .Indirect_X, false},
+	.LDA_IY   = {5, .Indirect_Y, false},
+	.LDX_IM   = {2, .Immediate, false},
+	.LDX_ZP   = {3, .ZeroPage, false},
+	.LDX_ZPY  = {4, .ZeroPage_Y, false},
+	.LDX_A    = {4, .Absolute, false},
+	.LDX_AY   = {4, .Absolute_Y, false},
+	.LDY_IM   = {2, .Immediate, false},
+	.LDY_ZP   = {3, .ZeroPage, false},
+	.LDY_ZPX  = {4, .ZeroPage_X, false},
+	.LDY_A    = {4, .Absolute, false},
+	.LDY_AX   = {4, .Absolute_X, false},
+	.LSR_ACC  = {2, .Accumulator, false},
+	.LSR_ZP   = {5, .ZeroPage, false},
+	.LSR_ZPX  = {6, .ZeroPage_X, false},
+	.LSR_A    = {6, .Absolute, false},
+	.LSR_AX   = {7, .Absolute_X, false},
+	.NOP      = {2, .NoneAddressing, false},
+	.NOP_U1   = {2, .NoneAddressing, true},
+	.NOP_U2   = {2, .NoneAddressing, true},
+	.NOP_U3   = {2, .NoneAddressing, true},
+	.NOP_U4   = {2, .NoneAddressing, true},
+	.NOP_U5   = {2, .NoneAddressing, true},
+	.NOP_U6   = {2, .NoneAddressing, true},
+	.NOP_I    = {2, .Immediate, true},
+	.NOP_I2   = {2, .Immediate, true},
+	.NOP_I3   = {2, .Immediate, true},
+	.NOP_I4   = {2, .Immediate, true},
+	.NOP_I5   = {2, .Immediate, true},
+	.NOP_ZP   = {3, .ZeroPage, true},
+	.NOP_ZP2  = {3, .ZeroPage, true},
+	.NOP_ZP3  = {3, .ZeroPage, true},
+	.NOP_ZPX  = {4, .ZeroPage_X, true},
 	.NOP_ZPX2 = {4, .ZeroPage_X, true},
 	.NOP_ZPX3 = {4, .ZeroPage_X, true},
 	.NOP_ZPX4 = {4, .ZeroPage_X, true},
 	.NOP_ZPX5 = {4, .ZeroPage_X, true},
 	.NOP_ZPX6 = {4, .ZeroPage_X, true},
-	.NOP_A = {4, .Absolute, true},
-	.NOP_AX = {4, .Absolute_X, true},
-	.NOP_AX2 = {4, .Absolute_X, true},
-	.NOP_AX3 = {4, .Absolute_X, true},
-	.NOP_AX4 = {4, .Absolute_X, true},
-	.NOP_AX5 = {4, .Absolute_X, true},
-	.NOP_AX6 = {4, .Absolute_X, true},
-	.ORA_IM = {2, .Immediate, false},
-	.ORA_ZP = {3, .ZeroPage, false},
-	.ORA_ZPX = {4, .ZeroPage_X, false},
-	.ORA_A = {4, .Absolute, false},
-	.ORA_AX = {4, .Absolute_X, false},
-	.ORA_AY = {4, .Absolute_Y, false},
-	.ORA_IX = {6, .Indirect_X, false},
-	.ORA_IY = {5, .Indirect_Y, false},
-	.PHA = {3, .NoneAddressing, false},
-	.PHP = {3, .NoneAddressing, false},
-	.PLA = {4, .NoneAddressing, false},
-	.PLP = {4, .NoneAddressing, false},
-	.RLA_ZP = {5, .ZeroPage, true},
-	.RLA_ZPX = {6, .ZeroPage_X, true},
-	.RLA_A = {6, .Absolute, true},
-	.RLA_AX = {7, .Absolute_X, true},
-	.RLA_AY = {7, .Absolute_Y, true},
-	.RLA_IX = {8, .Indirect_X, true},
-	.RLA_IY = {8, .Indirect_Y, true},
-	.ROL_ACC = {2, .Accumulator, false},
-	.ROL_ZP = {5, .ZeroPage, false},
-	.ROL_ZPX = {6, .ZeroPage_X, false},
-	.ROL_A = {6, .Absolute, false},
-	.ROL_AX = {7, .Absolute_X, false},
-	.ROR_ACC = {2, .Accumulator, false},
-	.ROR_ZP = {5, .ZeroPage, false},
-	.ROR_ZPX = {6, .ZeroPage_X, false},
-	.ROR_A = {6, .Absolute, false},
-	.ROR_AX = {7, .Absolute_X, false},
-	.RRA_ZP = {5, .ZeroPage, true},
-	.RRA_ZPX = {6, .ZeroPage_X, true},
-	.RRA_A = {6, .Absolute, true},
-	.RRA_AX = {7, .Absolute_X, true},
-	.RRA_AY = {7, .Absolute_Y, true},
-	.RRA_IX = {8, .Indirect_X, true},
-	.RRA_IY = {8, .Indirect_Y, true},
-	.RTI = {6, .NoneAddressing, false},
-	.RTS = {6, .NoneAddressing, false},
-	.SAX_A = {4, .Absolute, true},
-	.SAX_ZP = {3, .ZeroPage, true},
-	.SAX_ZPY = {4, .ZeroPage_Y, true},
-	.SAX_IX = {6, .Indirect_X, true},
-	.SBC_IM = {2, .Immediate, false},
-	.SBC_IM2 = {2, .Immediate, true},
-	.SBC_ZP = {3, .ZeroPage, false},
-	.SBC_ZPX = {4, .ZeroPage_X, false},
-	.SBC_A = {4, .Absolute, false},
-	.SBC_AX = {4, .Absolute_X, false},
-	.SBC_AY = {4, .Absolute_Y, false},
-	.SBC_IX = {6, .Indirect_X, false},
-	.SBC_IY = {5, .Indirect_Y, false},
-	.SEC = {2, .NoneAddressing, false},
-	.SED = {2, .NoneAddressing, false},
-	.SEI = {2, .NoneAddressing, false},
-	.SLO_A = {6, .Absolute, true},
-	.SLO_AX = {7, .Absolute_X, true},
-	.SLO_AY = {7, .Absolute_Y, true},
-	.SLO_IX = {8, .Indirect_X, true},
-	.SLO_IY = {8, .Indirect_Y, true},
-	.SLO_ZP = {5, .ZeroPage, true},
-	.SLO_ZPX = {6, .ZeroPage_X, true},
-	.SRE_ZP = {5, .ZeroPage, true},
-	.SRE_ZPX = {6, .ZeroPage_X, true},
-	.SRE_A = {6, .Absolute, true},
-	.SRE_AX = {7, .Absolute_X, true},
-	.SRE_AY = {7, .Absolute_Y, true},
-	.SRE_IX = {8, .Indirect_X, true},
-	.SRE_IY = {8, .Indirect_Y, true},
-	.STA_ZP = {3, .ZeroPage, false},
-	.STA_ZPX = {4, .ZeroPage_X, false},
-	.STA_A = {4, .Absolute, false},
-	.STA_AX = {5, .Absolute_X, false},
-	.STA_AY = {5, .Absolute_Y, false},
-	.STA_IX = {6, .Indirect_X, false},
-	.STA_IY = {6, .Indirect_Y, false},
-	.STX_ZP = {3, .ZeroPage, false},
-	.STX_ZPY = {4, .ZeroPage_Y, false},
-	.STX_A = {4, .Absolute, false},
-	.STY_ZP = {3, .ZeroPage, false},
-	.STY_ZPX = {4, .ZeroPage_X, false},
-	.STY_A = {4, .Absolute, false},
-	.TAX = {2, .NoneAddressing, false},
-	.TAY = {2, .NoneAddressing, false},
-	.TSX = {2, .NoneAddressing, false},
-	.TXA = {2, .NoneAddressing, false},
-	.TXS = {2, .NoneAddressing, false},
-	.TYA = {2, .NoneAddressing, false},
+	.NOP_A    = {4, .Absolute, true},
+	.NOP_AX   = {4, .Absolute_X, true},
+	.NOP_AX2  = {4, .Absolute_X, true},
+	.NOP_AX3  = {4, .Absolute_X, true},
+	.NOP_AX4  = {4, .Absolute_X, true},
+	.NOP_AX5  = {4, .Absolute_X, true},
+	.NOP_AX6  = {4, .Absolute_X, true},
+	.ORA_IM   = {2, .Immediate, false},
+	.ORA_ZP   = {3, .ZeroPage, false},
+	.ORA_ZPX  = {4, .ZeroPage_X, false},
+	.ORA_A    = {4, .Absolute, false},
+	.ORA_AX   = {4, .Absolute_X, false},
+	.ORA_AY   = {4, .Absolute_Y, false},
+	.ORA_IX   = {6, .Indirect_X, false},
+	.ORA_IY   = {5, .Indirect_Y, false},
+	.PHA      = {3, .NoneAddressing, false},
+	.PHP      = {3, .NoneAddressing, false},
+	.PLA      = {4, .NoneAddressing, false},
+	.PLP      = {4, .NoneAddressing, false},
+	.RLA_ZP   = {5, .ZeroPage, true},
+	.RLA_ZPX  = {6, .ZeroPage_X, true},
+	.RLA_A    = {6, .Absolute, true},
+	.RLA_AX   = {7, .Absolute_X, true},
+	.RLA_AY   = {7, .Absolute_Y, true},
+	.RLA_IX   = {8, .Indirect_X, true},
+	.RLA_IY   = {8, .Indirect_Y, true},
+	.ROL_ACC  = {2, .Accumulator, false},
+	.ROL_ZP   = {5, .ZeroPage, false},
+	.ROL_ZPX  = {6, .ZeroPage_X, false},
+	.ROL_A    = {6, .Absolute, false},
+	.ROL_AX   = {7, .Absolute_X, false},
+	.ROR_ACC  = {2, .Accumulator, false},
+	.ROR_ZP   = {5, .ZeroPage, false},
+	.ROR_ZPX  = {6, .ZeroPage_X, false},
+	.ROR_A    = {6, .Absolute, false},
+	.ROR_AX   = {7, .Absolute_X, false},
+	.RRA_ZP   = {5, .ZeroPage, true},
+	.RRA_ZPX  = {6, .ZeroPage_X, true},
+	.RRA_A    = {6, .Absolute, true},
+	.RRA_AX   = {7, .Absolute_X, true},
+	.RRA_AY   = {7, .Absolute_Y, true},
+	.RRA_IX   = {8, .Indirect_X, true},
+	.RRA_IY   = {8, .Indirect_Y, true},
+	.RTI      = {6, .NoneAddressing, false},
+	.RTS      = {6, .NoneAddressing, false},
+	.SAX_A    = {4, .Absolute, true},
+	.SAX_ZP   = {3, .ZeroPage, true},
+	.SAX_ZPY  = {4, .ZeroPage_Y, true},
+	.SAX_IX   = {6, .Indirect_X, true},
+	.SBC_IM   = {2, .Immediate, false},
+	.SBC_IM2  = {2, .Immediate, true},
+	.SBC_ZP   = {3, .ZeroPage, false},
+	.SBC_ZPX  = {4, .ZeroPage_X, false},
+	.SBC_A    = {4, .Absolute, false},
+	.SBC_AX   = {4, .Absolute_X, false},
+	.SBC_AY   = {4, .Absolute_Y, false},
+	.SBC_IX   = {6, .Indirect_X, false},
+	.SBC_IY   = {5, .Indirect_Y, false},
+	.SEC      = {2, .NoneAddressing, false},
+	.SED      = {2, .NoneAddressing, false},
+	.SEI      = {2, .NoneAddressing, false},
+	.SLO_A    = {6, .Absolute, true},
+	.SLO_AX   = {7, .Absolute_X, true},
+	.SLO_AY   = {7, .Absolute_Y, true},
+	.SLO_IX   = {8, .Indirect_X, true},
+	.SLO_IY   = {8, .Indirect_Y, true},
+	.SLO_ZP   = {5, .ZeroPage, true},
+	.SLO_ZPX  = {6, .ZeroPage_X, true},
+	.SRE_ZP   = {5, .ZeroPage, true},
+	.SRE_ZPX  = {6, .ZeroPage_X, true},
+	.SRE_A    = {6, .Absolute, true},
+	.SRE_AX   = {7, .Absolute_X, true},
+	.SRE_AY   = {7, .Absolute_Y, true},
+	.SRE_IX   = {8, .Indirect_X, true},
+	.SRE_IY   = {8, .Indirect_Y, true},
+	.STA_ZP   = {3, .ZeroPage, false},
+	.STA_ZPX  = {4, .ZeroPage_X, false},
+	.STA_A    = {4, .Absolute, false},
+	.STA_AX   = {5, .Absolute_X, false},
+	.STA_AY   = {5, .Absolute_Y, false},
+	.STA_IX   = {6, .Indirect_X, false},
+	.STA_IY   = {6, .Indirect_Y, false},
+	.STX_ZP   = {3, .ZeroPage, false},
+	.STX_ZPY  = {4, .ZeroPage_Y, false},
+	.STX_A    = {4, .Absolute, false},
+	.STY_ZP   = {3, .ZeroPage, false},
+	.STY_ZPX  = {4, .ZeroPage_X, false},
+	.STY_A    = {4, .Absolute, false},
+	.TAX      = {2, .NoneAddressing, false},
+	.TAY      = {2, .NoneAddressing, false},
+	.TSX      = {2, .NoneAddressing, false},
+	.TXA      = {2, .NoneAddressing, false},
+	.TXS      = {2, .NoneAddressing, false},
+	.TYA      = {2, .NoneAddressing, false},
 }
 
 OpCodeInfo :: struct {
@@ -611,7 +619,7 @@ brk :: proc(state: ^MOS6502) {
 	state.status = state.status | BreakCommand
 }
 
-adc :: proc(state: ^MOS6502, bus: ^memory.Bus, add_mode: AddressingMode) {
+adc :: proc(state: ^MOS6502, bus: ^Bus, add_mode: AddressingMode) {
 
 	m := getValue8(state, bus, add_mode)
 
@@ -636,7 +644,7 @@ adc :: proc(state: ^MOS6502, bus: ^memory.Bus, add_mode: AddressingMode) {
 	state.a = value2
 }
 
-and :: proc(state: ^MOS6502, bus: ^memory.Bus, add_mode: AddressingMode) {
+and :: proc(state: ^MOS6502, bus: ^Bus, add_mode: AddressingMode) {
 	m := getValue8(state, bus, add_mode)
 
 	state.a &= m
@@ -644,13 +652,7 @@ and :: proc(state: ^MOS6502, bus: ^memory.Bus, add_mode: AddressingMode) {
 	state.status = setNegativeFlag(state.a, state.status)
 }
 
-shift :: proc(
-	state: ^MOS6502,
-	bus: ^memory.Bus,
-	add_mode: AddressingMode,
-	carry: bool,
-	left: bool,
-) {
+shift :: proc(state: ^MOS6502, bus: ^Bus, add_mode: AddressingMode, carry: bool, left: bool) {
 	m := getValue8(state, bus, add_mode)
 
 	value: u8
@@ -679,7 +681,7 @@ shift :: proc(
 	writeValue8(value, state, bus, add_mode)
 }
 
-branch :: proc(state: ^MOS6502, bus: ^memory.Bus, flag: u8, eq: bool) {
+branch :: proc(state: ^MOS6502, bus: ^Bus, flag: u8, eq: bool) {
 	// Offset if from the end of the instruction so the way I increment everything
 	// should be fine
 
@@ -699,7 +701,7 @@ branch :: proc(state: ^MOS6502, bus: ^memory.Bus, flag: u8, eq: bool) {
 	}
 }
 
-bit :: proc(state: ^MOS6502, bus: ^memory.Bus, add_mode: AddressingMode) {
+bit :: proc(state: ^MOS6502, bus: ^Bus, add_mode: AddressingMode) {
 	mem_val := getValue8(state, bus, add_mode)
 	value := state.a & mem_val
 	state.status = setZeroFlag(value, state.status)
@@ -719,7 +721,7 @@ clear :: proc(state: ^MOS6502, flag: u8) {
 	state.status = state.status &~ flag
 }
 
-compare :: proc(state: ^MOS6502, register: ^u8, bus: ^memory.Bus, add_mode: AddressingMode) {
+compare :: proc(state: ^MOS6502, register: ^u8, bus: ^Bus, add_mode: AddressingMode) {
 	m := getValue8(state, bus, add_mode)
 	value := register^ - m
 
@@ -728,7 +730,7 @@ compare :: proc(state: ^MOS6502, register: ^u8, bus: ^memory.Bus, add_mode: Addr
 	state.status = setNegativeFlag(value, state.status)
 }
 
-dec :: proc(state: ^MOS6502, register: ^u8, bus: ^memory.Bus, add_mode: AddressingMode) {
+dec :: proc(state: ^MOS6502, register: ^u8, bus: ^Bus, add_mode: AddressingMode) {
 	value: u8
 
 	// Different branches for when decrementing x/y-registers and memory locations
@@ -744,13 +746,13 @@ dec :: proc(state: ^MOS6502, register: ^u8, bus: ^memory.Bus, add_mode: Addressi
 	state.status = setNegativeFlag(value, state.status)
 }
 
-eor :: proc(state: ^MOS6502, bus: ^memory.Bus, add_mode: AddressingMode) {
+eor :: proc(state: ^MOS6502, bus: ^Bus, add_mode: AddressingMode) {
 	state.a = state.a ~ getValue8(state, bus, add_mode)
 	state.status = setZeroFlag(state.a, state.status)
 	state.status = setNegativeFlag(state.a, state.status)
 }
 
-inc :: proc(state: ^MOS6502, register: ^u8, bus: ^memory.Bus, add_mode: AddressingMode) {
+inc :: proc(state: ^MOS6502, register: ^u8, bus: ^Bus, add_mode: AddressingMode) {
 	value: u8
 
 	// Different branches for when decrementing x/y-registers and memory locations
@@ -766,7 +768,7 @@ inc :: proc(state: ^MOS6502, register: ^u8, bus: ^memory.Bus, add_mode: Addressi
 	state.status = setNegativeFlag(value, state.status)
 }
 
-jump :: proc(state: ^MOS6502, bus: ^memory.Bus, add_mode: AddressingMode, sub: bool) {
+jump :: proc(state: ^MOS6502, bus: ^Bus, add_mode: AddressingMode, sub: bool) {
 	value := getOffset(state, bus, add_mode)
 
 	// If jump to subroutine, push the address (minus one) of the return point on the stack
@@ -781,13 +783,13 @@ jump :: proc(state: ^MOS6502, bus: ^memory.Bus, add_mode: AddressingMode, sub: b
 	state.pc = int(value)
 }
 
-loadRegister :: proc(state: ^MOS6502, register: ^u8, bus: ^memory.Bus, add_mode: AddressingMode) {
+loadRegister :: proc(state: ^MOS6502, register: ^u8, bus: ^Bus, add_mode: AddressingMode) {
 	register^ = getValue8(state, bus, add_mode)
 	state.status = setZeroFlag(register^, state.status)
 	state.status = setNegativeFlag(register^, state.status)
 }
 
-lsr :: proc(state: ^MOS6502, bus: ^memory.Bus, add_mode: AddressingMode) {
+lsr :: proc(state: ^MOS6502, bus: ^Bus, add_mode: AddressingMode) {
 	m := getValue8(state, bus, add_mode)
 
 	value := m >> 1
@@ -801,20 +803,20 @@ lsr :: proc(state: ^MOS6502, bus: ^memory.Bus, add_mode: AddressingMode) {
 
 }
 
-nop :: proc(state: ^MOS6502, bus: ^memory.Bus, add_mode: AddressingMode) {
+nop :: proc(state: ^MOS6502, bus: ^Bus, add_mode: AddressingMode) {
 
 	// For unofficial nops we must consume some values
 	tmp := getValue8(state, bus, add_mode)
 }
 
-ora :: proc(state: ^MOS6502, bus: ^memory.Bus, add_mode: AddressingMode) {
+ora :: proc(state: ^MOS6502, bus: ^Bus, add_mode: AddressingMode) {
 	state.a = getValue8(state, bus, add_mode) | state.a
 
 	state.status = setZeroFlag(state.a, state.status)
 	state.status = setNegativeFlag(state.a, state.status)
 }
 
-rti :: proc(state: ^MOS6502, bus: ^memory.Bus) {
+rti :: proc(state: ^MOS6502, bus: ^Bus) {
 	// log.error("RTI Not Implemented")
 	state.status = (pop8(state, bus) | 0b0010_0000) & 0b1110_1111
 
@@ -825,7 +827,7 @@ rti :: proc(state: ^MOS6502, bus: ^memory.Bus) {
 	//state.pc = auto_cast pop(state, bus)
 }
 
-rts :: proc(state: ^MOS6502, bus: ^memory.Bus) {
+rts :: proc(state: ^MOS6502, bus: ^Bus) {
 	high, low: u8
 	popR(&high, &low, state, bus)
 
@@ -836,7 +838,7 @@ rts :: proc(state: ^MOS6502, bus: ^memory.Bus) {
 	state.pc = int(pc) + 1
 }
 
-sbc :: proc(state: ^MOS6502, bus: ^memory.Bus, add_mode: AddressingMode) {
+sbc :: proc(state: ^MOS6502, bus: ^Bus, add_mode: AddressingMode) {
 	m := getValue8(state, bus, add_mode)
 
 	if state.dm_avail && (state.status & DecimalModeFlag != 0) {
@@ -866,7 +868,7 @@ setFlag :: proc(state: ^MOS6502, flag: u8) {
 	state.status = state.status | flag
 }
 
-store :: proc(register: u8, state: ^MOS6502, bus: ^memory.Bus, add_mode: AddressingMode) {
+store :: proc(register: u8, state: ^MOS6502, bus: ^Bus, add_mode: AddressingMode) {
 	offset := getOffset(state, bus, add_mode)
 	// memory[offset] = register
 	bus.write(bus, offset, register)
@@ -881,7 +883,7 @@ transfer :: proc(dest: ^u8, init: ^u8, state: ^MOS6502, set_flags: bool) {
 	}
 }
 
-getOffset :: proc(state: ^MOS6502, bus: ^memory.Bus, add_mode: AddressingMode) -> u16 {
+getOffset :: proc(state: ^MOS6502, bus: ^Bus, add_mode: AddressingMode) -> u16 {
 	switch add_mode {
 	case .Accumulator:
 		log.error("Can't get offset for accumulator")
@@ -932,7 +934,7 @@ getOffset :: proc(state: ^MOS6502, bus: ^memory.Bus, add_mode: AddressingMode) -
 	return 0
 }
 
-getValue8 :: proc(state: ^MOS6502, bus: ^memory.Bus, add_mode: AddressingMode) -> u8 {
+getValue8 :: proc(state: ^MOS6502, bus: ^Bus, add_mode: AddressingMode) -> u8 {
 
 	switch add_mode {
 	case .Accumulator:
@@ -995,7 +997,7 @@ getValue8 :: proc(state: ^MOS6502, bus: ^memory.Bus, add_mode: AddressingMode) -
 // Fome some instructions that act straight on the memory locations (i.e. ASL). We
 // undo the increment of the program counter and then read in the offset again in order
 // to figure out where to store the value
-writeValue8 :: proc(value: u8, state: ^MOS6502, bus: ^memory.Bus, add_mode: AddressingMode) {
+writeValue8 :: proc(value: u8, state: ^MOS6502, bus: ^Bus, add_mode: AddressingMode) {
 	switch add_mode {
 	case .Accumulator:
 		state.a = value
@@ -1020,28 +1022,28 @@ writeValue8 :: proc(value: u8, state: ^MOS6502, bus: ^memory.Bus, add_mode: Addr
 
 // The stack containes the addresses from 0x0100 to 0x01FF and the stack pointer runs from 0 to FF
 // so you need to add 0x0100 to the stack pointer value to get the address on the stack
-push8 :: proc(reg1: u8, state: ^MOS6502, bus: ^memory.Bus) {
+push8 :: proc(reg1: u8, state: ^MOS6502, bus: ^Bus) {
 	addr := u16(state.sp) + 0x0100
 	// stack[state.sp - 1] = reg1
 	bus.write(bus, addr, reg1)
 	state.sp -= 1
 }
 
-pop8 :: proc(state: ^MOS6502, bus: ^memory.Bus) -> u8 {
+pop8 :: proc(state: ^MOS6502, bus: ^Bus) -> u8 {
 	addr := u16(state.sp + 1) + 0x0100
 	state.sp += 1
 	// return stack[state.sp - 1]
 	return bus.read(bus, addr)
 }
 
-pushR :: proc(reg1: u8, reg2: u8, state: ^MOS6502, bus: ^memory.Bus) {
+pushR :: proc(reg1: u8, reg2: u8, state: ^MOS6502, bus: ^Bus) {
 	addr := u16(state.sp) + 0x0100
 	bus.write(bus, addr - 1, reg2)
 	bus.write(bus, addr, reg1)
 	state.sp -= 2
 }
 
-popR :: proc(reg1: ^u8, reg2: ^u8, state: ^MOS6502, bus: ^memory.Bus) {
+popR :: proc(reg1: ^u8, reg2: ^u8, state: ^MOS6502, bus: ^Bus) {
 	addr := u16(state.sp) + 0x0100
 	reg2^ = bus.read(bus, addr + 1)
 	reg1^ = bus.read(bus, addr + 2)
@@ -1077,19 +1079,19 @@ toBCD :: proc(value: u8) -> u8 {
 
 getCombined :: proc(high: u8, low: u8) -> u16 {return (u16(high) << 8) | u16(low)}
 
-readImmediate8 :: proc(state: ^MOS6502, bus: ^memory.Bus) -> u8 {
+readImmediate8 :: proc(state: ^MOS6502, bus: ^Bus) -> u8 {
 	data := bus.read(bus, auto_cast state.pc)
 	state.pc += 1
 	//return memory[state.pc - 1]
 	return data
 }
 
-writeImmediate8 :: proc(value: u8, state: ^MOS6502, bus: ^memory.Bus) {
+writeImmediate8 :: proc(value: u8, state: ^MOS6502, bus: ^Bus) {
 	bus.write(bus, auto_cast (state.pc - 1), value)
 }
 
 //TODO: Replace with two readImmediate8
-readImmediate16 :: proc(state: ^MOS6502, bus: ^memory.Bus) -> u16 {
+readImmediate16 :: proc(state: ^MOS6502, bus: ^Bus) -> u16 {
 	low := bus.read(bus, auto_cast state.pc)
 	high := bus.read(bus, auto_cast state.pc + 1)
 
@@ -1112,7 +1114,7 @@ undo_read :: proc(state: ^MOS6502, add_mode: AddressingMode) {
 	}
 }
 
-emulate6502p :: proc(state: ^MOS6502, bus: ^memory.Bus) -> int {
+emulate6502p :: proc(state: ^MOS6502, bus: ^Bus) -> int {
 	opcode: OpCode = auto_cast readImmediate8(state, bus)
 
 	//Page boundary
