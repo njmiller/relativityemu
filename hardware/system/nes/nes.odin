@@ -32,18 +32,18 @@ bus_mem_read :: proc(bus: ^mos6502.Bus, addr: u16) -> u8 {
 	case RAM ..= RAM_MIRRORS_END:
 		mirror_down_addr := addr & 0b00000111_11111111
 		mem_val = bus.cpu_vram[mirror_down_addr]
-	case PPU_REGISTERS ..= PPU_REGISTERS_MIRRORS_END:
+	case 0x2000, 0x2001, 0x2003, 0x2005, 0x2006:
+		log.panic("Attempt to read from write-only PPU address:", addr)
+	case 0x2002:
+		mem_val = read_ppu_status(&bus.ppu0)
+	case 0x2004:
+	case 0x2007:
+		mem_val = read_ppu_data(&bus.ppu0)
+	case 0x2008 ..= PPU_REGISTERS_MIRRORS_END:
+		// Calculate what address this address mirrors and then
+		// read from that address
 		mirror_down_addr := addr & 0b00100000_00000111
-		mem_val = read_ppu(&bus.ppu0, mirror_down_addr)
-	// case 0x2000, 0x2001, 0x2003, 0x2005, 0x2006, 0x4014:
-	// log.panic("Attempt to read from write-only PPU address:", addr)
-	// case 0x2007:
-	// mem_val = read_ppu_data(&bus.ppu0)
-	// case 0x2008 ..= PPU_REGISTERS_MIRRORS_END:
-	// Calculate what address this address mirrors and then
-	// read from that address
-	// mirror_down_addr := addr & 0b00100000_00000111
-	// mem_val = bus_mem_read(bus, mirror_down_addr)
+		mem_val = bus_mem_read(bus, mirror_down_addr)
 	case 0x8000 ..= 0xFFFF:
 		mem_val = prg_read(bus.prg_rom, addr)
 	case:
@@ -63,21 +63,30 @@ bus_mem_write :: proc(bus: ^mos6502.Bus, addr: u16, data: u8) {
 	case RAM ..= RAM_MIRRORS_END:
 		mirror_down_addr := addr & 0b00000111_11111111
 		bus.cpu_vram[mirror_down_addr] = data
-	case PPU_REGISTERS ..= PPU_REGISTERS_MIRRORS_END:
-		mirror_down_addr := addr & 0b00100000_00000111
-		write_ppu(&bus.ppu0, mirror_down_addr, data)
-	// case 0x2000:
-	// write_to_ctrl(&bus.ppu0, data)
-	// case 0x2006:
-	// write_to_ppu_addr(&bus.ppu0, data)
-	// case 0x2008 ..= PPU_REGISTERS_MIRRORS_END:
-	// Calculate what address this address mirrors and write
-	// to that address
+	// case PPU_REGISTERS ..= PPU_REGISTERS_MIRRORS_END:
 	// mirror_down_addr := addr & 0b00100000_00000111
-	// bus_mem_write(bus, mirror_down_addr, data)
+	// write_ppu(&bus.ppu0, mirror_down_addr, data)
+	case 0x2000:
+		write_to_ctrl(&bus.ppu0, data)
+	case 0x2001:
+		write_to_mask(&bus.ppu0, data)
+	case 0x2002:
+		log.panic("Attempting to write to status which is read only")
+	case 0x2003:
+		write_oamaddr(&bus.ppu0, data)
+	case 0x2004:
+		write_oamdata(&bus.ppu0, data)
+	case 0x2005:
+		write_to_scroll(&bus.ppu0, data)
+	case 0x2006:
+		write_to_addr(&bus.ppu0, data)
+	case 0x2007:
+	case 0x2008 ..= PPU_REGISTERS_MIRRORS_END:
+		// Calculate what address this address mirrors and write
+		// to that address
+		mirror_down_addr := addr & 0b00100000_00000111
+		bus_mem_write(bus, mirror_down_addr, data)
 	case 0x4014:
-		// PPU OAM DMA must be here as it needs to be able to access the
-		// full memory bus to copy a page of data
 		ppu_oam_data_write(bus, data)
 	case 0x8000 ..= 0xFFFF:
 		log.error("Attempting to write to a cartridge ROM space.")

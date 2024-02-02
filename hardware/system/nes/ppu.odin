@@ -147,7 +147,7 @@ get_controller_bitset :: proc(data: u8) -> Controller_Bitset {
 	return bitset_tmp
 }
 
-@(private = "file")
+@(private)
 write_to_ctrl :: proc(ppu: ^Ricoh2c02, value: u8) {
 	ppu.ctrl = get_controller_bitset(value)
 }
@@ -191,7 +191,7 @@ get_mask_bitset :: proc(data: u8) -> Mask_Bitset {
 	return bitset_tmp
 }
 
-@(private = "file")
+@(private)
 write_to_mask :: proc(ppu: ^Ricoh2c02, data: u8) {
 	ppu.mask = get_mask_bitset(data)
 }
@@ -261,8 +261,8 @@ get_status_bitset :: proc(data: u8) -> Status_Bitset {
 	return bitset_tmp
 }
 
-@(private = "file")
-read_status :: proc(ppu: ^Ricoh2c02) -> u8 {
+@(private)
+read_ppu_status :: proc(ppu: ^Ricoh2c02) -> u8 {
 
 	stat_u8: u8 = 0
 
@@ -294,7 +294,7 @@ ScrollRegister :: struct {
 	y_scroll: u8,
 }
 
-@(private = "file")
+@(private)
 write_to_scroll :: proc(ppu: ^Ricoh2c02, data: u8) {
 
 	if ppu.w {
@@ -306,8 +306,8 @@ write_to_scroll :: proc(ppu: ^Ricoh2c02, data: u8) {
 	ppu.w = !ppu.w
 }
 
-@(private = "file")
-read_data :: proc(ppu: ^Ricoh2c02) -> u8 {
+@(private)
+read_ppu_data :: proc(ppu: ^Ricoh2c02) -> u8 {
 	mem_addr := get_addr(&ppu.addr)
 	increment_vram_addr(ppu)
 
@@ -353,6 +353,7 @@ mirror_vram_addr :: proc(mem_addr: u16, mirroring: Mirroring) -> u16 {
 	return mem_addr
 }
 
+/*
 // Functions called from the bus.read and bus.write functions to
 // read and write to the data accessed through the PPU
 read_ppu :: proc(ppu: ^Ricoh2c02, mem_addr: u16) -> u8 {
@@ -378,6 +379,7 @@ read_ppu :: proc(ppu: ^Ricoh2c02, mem_addr: u16) -> u8 {
 
 	return mem_val
 }
+*/
 
 write_ppu :: proc(ppu: ^Ricoh2c02, mem_addr: u16, data: u8) {
 	switch mem_addr {
@@ -385,8 +387,6 @@ write_ppu :: proc(ppu: ^Ricoh2c02, mem_addr: u16, data: u8) {
 		write_to_ctrl(ppu, data)
 	case 0x2001:
 		write_to_mask(ppu, data)
-	// case 0x2002:
-	// write_to_status(ppu, data)
 	case 0x2002:
 		log.panic("Attempting to write to status which is read only")
 	case 0x2003:
