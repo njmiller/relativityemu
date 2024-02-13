@@ -25,6 +25,7 @@ Ricoh2c02 :: struct {
 	v, t, x:           u8,
 	scanline:          u16,
 	cycles:            int,
+	nmi_interrupt:     bool,
 }
 
 // 0x2000 - Controller register (write) - done
@@ -149,7 +150,44 @@ get_controller_bitset :: proc(data: u8) -> Controller_Bitset {
 
 @(private)
 write_to_ctrl :: proc(ppu: ^Ricoh2c02, value: u8) {
+	before_nmi_status := generate_vblank_nmi(ppu.ctrl)
 	ppu.ctrl = get_controller_bitset(value)
+	if !before_nmi_status && generate_vblank_nmi(ppu.ctrl) && is_in_vblank(ppu.status) {
+		ppu.nmi_interrupt = true
+	}
+}
+
+poll_nmi_interrupt :: proc(ppu: ^Ricoh2c02) -> bool {
+	// Returns the value of nmi_interrupt and sets it to false
+	prev_nmi_interrupt := ppu.nmi_interrupt
+	ppu.nmi_interrupt = false
+
+	return prev_nmi_interrupt
+}
+
+generate_vblank_nmi :: proc(ctrl: Controller_Bitset) -> bool {
+	return .GENERATE_NMI in ctrl
+}
+
+get_nametable_addr :: proc(ctrl: Controller_Bitset) -> u16 {
+	nametable_num := 0
+	nametable_num += 1 if .NAMETABLE1 in ctrl else 0
+	nametable_num += 2 if .NAMETABLE2 in ctrl else 0
+
+	nametable_addr: u16
+	switch nametable_num {
+	case 0:
+		nametable_addr = 0x2000
+	case 1:
+		nametable_addr = 0x2400
+	case 2:
+		nametable_addr = 0x2800
+	case 3:
+		nametable_addr = 0x2C00
+	case:
+		log.fatal("Nametable num is an invalid value.")
+	}
+	return nametable_addr
 }
 
 // Mask Register
@@ -234,20 +272,24 @@ set_sprite_overflow :: proc(status: Status_Bitset, set: bool) -> Status_Bitset {
 	}
 }
 
-set_sprite_0_hit :: proc(status: Status_Bitset, set: bool) -> Status_Bitset {
+set_sprite_0_hit :: proc(ppu: ^Ricoh2c02, set: bool) {
 	if set {
-		return status + {.SPRITE_0_HIT}
+		ppu.status += {.SPRITE_0_HIT}
 	} else {
-		return status - {.SPRITE_0_HIT}
+		ppu.status -= {.SPRITE_0_HIT}
 	}
 }
 
-set_vertical_blank :: proc(status: Status_Bitset, set: bool) -> Status_Bitset {
+set_vertical_blank :: proc(ppu: ^Ricoh2c02, set: bool) {
 	if set {
-		return status + {.VERTICAL_BLANK}
+		ppu.status += {.VERTICAL_BLANK}
 	} else {
-		return status - {.VERTICAL_BLANK}
+		ppu.status -= {.VERTICAL_BLANK}
 	}
+}
+
+is_in_vblank :: proc(status: Status_Bitset) -> bool {
+	return .VERTICAL_BLANK in status
 }
 
 get_status_bitset :: proc(data: u8) -> Status_Bitset {
@@ -381,6 +423,7 @@ read_ppu :: proc(ppu: ^Ricoh2c02, mem_addr: u16) -> u8 {
 }
 */
 
+/*
 write_ppu :: proc(ppu: ^Ricoh2c02, mem_addr: u16, data: u8) {
 	switch mem_addr {
 	case 0x2000:
@@ -400,6 +443,7 @@ write_ppu :: proc(ppu: ^Ricoh2c02, mem_addr: u16, data: u8) {
 		log.panic("Attempt to access bad or mirrored PPU addresses:", mem_addr)
 	}
 }
+*/
 
 tick_ppu :: proc(ppu: ^Ricoh2c02, ncycles: int) -> bool {
 	ppu.cycles += ncycles
@@ -408,15 +452,16 @@ tick_ppu :: proc(ppu: ^Ricoh2c02, ncycles: int) -> bool {
 		ppu.scanline += 1
 
 		if ppu.scanline == 241 {
-			if generate_vblank_nmi() {
-				ppu.status = set_vertical_blank(ppu.status, true)
-				log.warn("Should trigger NMI interrupt.")
-			}
+			set_vertical_blank(ppu, true)
+			set_sprite_0_hit(ppu, false)
+			if generate_vblank_nmi(ppu.ctrl) do ppu.nmi_interrupt = true
 		}
 
 		if ppu.scanline >= 262 {
 			ppu.scanline = 0
-			ppu.status = set_vertical_blank(ppu.status, false)
+			ppu.nmi_interrupt = false
+			set_sprite_0_hit(ppu, false)
+			set_vertical_blank(ppu, false)
 			return true
 		}
 	}

@@ -62,7 +62,7 @@ read_ines :: proc(fn: string) -> ([]u8, []u8, u8, u8) {
 		mirroring = 2
 	}
 
-	//TODO: Can I jsut return a slice of the input data or do I need to copy
+	//TODO: Can I just return a slice of the input data or do I need to copy
 	// the data to a new array and delete the input data when function goes
 	// out of scope?
 	prg_rom_size := int(num_16) * PRG_BANK_SIZE

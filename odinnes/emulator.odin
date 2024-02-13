@@ -506,6 +506,18 @@ run_game :: proc(fn: string) {
 
 	run(&nes_state)
 }
+
+test_render :: proc() {
+	prg, chr, mapper, mirroring := nes.read_ines("pacman.nes")
+
+	tile_frame := nes.show_tile(chr, 1, 0)
+
+	rl.InitWindow(320, 320, "Test Render")
+	defer rl.CloseWindow()
+
+	rl.SetTargetFPS(60)
+}
+
 main :: proc() {
 	//test_snake_game()
 

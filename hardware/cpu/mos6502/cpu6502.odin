@@ -14,8 +14,9 @@ ReadFn :: #type proc(bus: ^Bus, addr: u16) -> u8
 WriteFn :: #type proc(bus: ^Bus, addr: u16, data: u8)
 
 Bus :: struct {
-	read:  ReadFn,
-	write: WriteFn,
+	read:    ReadFn,
+	write:   WriteFn,
+	ncycles: int,
 }
 
 OpCode :: enum u8 {
@@ -539,6 +540,7 @@ CarryFlag: u8 : 0b0000_0001
 InterruptDisable: u8 : 0b0000_0100
 DecimalModeFlag: u8 : 0b0000_1000
 BreakCommand: u8 : 0b0001_0000
+BreakCommand2: u8 : 0b0010_0000
 OverflowFlag: u8 : 0b0100_0000
 
 ZeroBit :: 1
