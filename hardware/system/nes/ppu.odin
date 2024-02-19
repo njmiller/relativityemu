@@ -1,5 +1,6 @@
 package nes
 
+import "core:fmt"
 import "core:log"
 
 Mirroring :: enum {
@@ -190,6 +191,16 @@ get_nametable_addr :: proc(ctrl: Controller_Bitset) -> u16 {
 	return nametable_addr
 }
 
+get_background_pattern_addr :: proc(ctrl: Controller_Bitset) -> u16 {
+	addr: u16 = 0x1000 if .BACKGROUND_PATTERN_ADDR in ctrl else 0x0000
+	return addr
+}
+
+get_sprite_pattern_addr :: proc(ctrl: Controller_Bitset) -> u16 {
+	addr: u16 = 0x1000 if .SPRITE_PATTERN_ADDR in ctrl else 0x0000
+	return addr
+}
+
 // Mask Register
 //
 // 7  bit  0
@@ -363,11 +374,51 @@ read_ppu_data :: proc(ppu: ^Ricoh2c02) -> u8 {
 		ppu.internal_data_buf = ppu.vram[mirror_vram_addr(mem_addr, ppu.mirroring)]
 	case 0x3000 ..= 0x3EFF:
 		log.error("Address space 0x3000..0x3EFF is not expected to be used:", mem_addr)
+	// Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C. 
+	// Note that this goes for writing as well as reading. A symptom of not having implemented
+	//  this correctly in an emulator is the sky being black in Super Mario Bros., which writes
+	//  the backdrop color through $3F10.
+	case 0x3F10, 0x3F14, 0x3F18, 0x3F1C:
+		add_mirror := mem_addr - 0x10
+		result = ppu.palette_table[(add_mirror - 0x3F00)]
 	case 0x3F00 ..= 0x3FFF:
 		// Don't need a dummy read for palette table
-		result = ppu.palette_table[(mem_addr - 0x3F00)]
+		add_mirror := (mem_addr - 0x3F00) % 0x20
+		result = ppu.palette_table[add_mirror]
 	}
+
 	return result
+}
+
+@(private)
+write_to_ppu_data :: proc(ppu: ^Ricoh2c02, data: u8) {
+	mem_addr := get_addr(&ppu.addr)
+	increment_vram_addr(ppu)
+
+	switch mem_addr {
+	case 0 ..= 0x1FFF:
+		log.error("Trying to write to CHR Rom")
+	case 0x2000 ..= 0x2FFF:
+		mem_addr_mirror := mirror_vram_addr(mem_addr, ppu.mirroring)
+		fmt.println("Writing to VRAM:", mem_addr_mirror, data)
+		ppu.vram[mem_addr_mirror] = data
+	case 0x3000 ..= 0x3EFF:
+		log.error("Address space 0x3000..0x3EFF is not expected to be used:", mem_addr)
+	// Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C. 
+	// Note that this goes for writing as well as reading. A symptom of not having implemented
+	//  this correctly in an emulator is the sky being black in Super Mario Bros., which writes
+	//  the backdrop color through $3F10.
+	case 0x3F10, 0x3F14, 0x3F18, 0x3F1C:
+		add_mirror := mem_addr - 0x10
+		ppu.palette_table[(add_mirror - 0x3F00)] = data
+	case 0x3F00 ..= 0x3FFF:
+		// palette table data goes from 0x3F00 to 0x3F1F and then is mirrored all the way to 0x3FFF
+		add_mirror := (mem_addr - 0x3F00) % 0x20
+		ppu.palette_table[add_mirror] = data
+	case:
+		log.panic("Unexpected access to mirrored space:", mem_addr)
+	}
+
 }
 
 increment_vram_addr :: proc(ppu: ^Ricoh2c02) {
@@ -391,59 +442,11 @@ mirror_vram_addr :: proc(mem_addr: u16, mirroring: Mirroring) -> u16 {
 			mem_addr_out = vram_idx - 0x800
 		}
 	case .FOUR_SCREEN:
-	}
-	return mem_addr
-}
-
-/*
-// Functions called from the bus.read and bus.write functions to
-// read and write to the data accessed through the PPU
-read_ppu :: proc(ppu: ^Ricoh2c02, mem_addr: u16) -> u8 {
-
-	mem_val: u8
-
-	switch mem_addr {
-	case 0x2000, 0x2001, 0x2003, 0x2005, 0x2006:
-		log.panic("Attempt to read from write-only PPU address:", mem_addr)
-	case 0x2002:
-		mem_val = read_status(ppu)
-	case 0x2004:
-	case 0x2007:
-		mem_val = read_data(ppu)
-	case:
-		log.panic("Attempting to access bad or mirrored addresses.")
-	// case 0x2008 ..= PPU_REGISTERS_MIRRORS_END:
-	// Calculate what address this address mirrors and then
-	// read from that address
-	// mirror_down_addr := mem_addr & 0b00100000_00000111
-	// mem_val = read_ppu(ppu, mirror_down_addr)
+		log.warn("FOUR SCREEN Mirroring not implemented yet.")
 	}
 
-	return mem_val
+	return mem_addr_out
 }
-*/
-
-/*
-write_ppu :: proc(ppu: ^Ricoh2c02, mem_addr: u16, data: u8) {
-	switch mem_addr {
-	case 0x2000:
-		write_to_ctrl(ppu, data)
-	case 0x2001:
-		write_to_mask(ppu, data)
-	case 0x2002:
-		log.panic("Attempting to write to status which is read only")
-	case 0x2003:
-	case 0x2004:
-	case 0x2005:
-		write_to_scroll(ppu, data)
-	case 0x2006:
-		write_to_addr(ppu, data)
-	case 0x2007:
-	case:
-		log.panic("Attempt to access bad or mirrored PPU addresses:", mem_addr)
-	}
-}
-*/
 
 tick_ppu :: proc(ppu: ^Ricoh2c02, ncycles: int) -> bool {
 	ppu.cycles += ncycles

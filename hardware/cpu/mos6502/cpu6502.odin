@@ -872,7 +872,6 @@ setFlag :: proc(state: ^MOS6502, flag: u8) {
 
 store :: proc(register: u8, state: ^MOS6502, bus: ^Bus, add_mode: AddressingMode) {
 	offset := getOffset(state, bus, add_mode)
-	// memory[offset] = register
 	bus.write(bus, offset, register)
 }
 

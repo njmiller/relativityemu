@@ -79,5 +79,7 @@ read_ines :: proc(fn: string) -> ([]u8, []u8, u8, u8) {
 	copy_slice(prg_rom, data[prg_start:prg_end])
 	copy_slice(chr_rom, data[chr_start:chr_end])
 
+	fmt.println("LEN PRG:", len(prg_rom))
+	
 	return prg_rom, chr_rom, mapper, mirroring
 }

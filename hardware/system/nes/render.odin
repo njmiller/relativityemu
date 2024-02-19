@@ -1,5 +1,6 @@
 package nes
 
+import "core:fmt"
 import "core:log"
 
 import rl "vendor:raylib"
@@ -85,8 +86,10 @@ set_frame_pixel :: proc(frame: ^Frame, x: int, y: int, color: rl.Color) {
 	if base < (FRAME_HEIGHT * FRAME_WIDTH) do frame.data[base] = color
 }
 
-show_tile :: proc(chr_rom: []u8, bank: int, tile_n: int) -> Frame {
-	frame: Frame
+// A tile is 16 bytes = 8*8*2 bits (4 possible colors = 2 bits). Each row is encoded using 2 bytes
+// that are 8 bytes away from each other. I.E. the color index for the first row is encoded in 0x0000
+// and 0x0008 in thw tile. Each bit in the byte corresponds to the same column.
+show_tile :: proc(frame: ^Frame, x_off: int, y_off: int, chr_rom: []u8, bank: int, tile_n: int) {
 
 	bank := bank * 0x1000
 
@@ -98,10 +101,11 @@ show_tile :: proc(chr_rom: []u8, bank: int, tile_n: int) -> Frame {
 		lower := tile[y + 8]
 
 		color: rl.Color
-		for x in 0 ..< 8 {
+		for x := 7; x >= 0; x -= 1 {
 			value := (1 & upper) << 1 | (1 & lower)
 			upper = upper >> 1
 			lower = lower >> 1
+			// These are currently random colors
 			switch value {
 			case 0:
 				color = SYSTEM_PALETTE[0x01]
@@ -114,8 +118,66 @@ show_tile :: proc(chr_rom: []u8, bank: int, tile_n: int) -> Frame {
 			case:
 				log.panic("Can't be")
 			}
-			set_frame_pixel(&frame, x, y, color)
+			set_frame_pixel(frame, x + x_off, y + y_off, color)
 		}
 	}
-	return frame
+}
+
+render_frame :: proc(frame: ^Frame, scaling: i32) {
+
+	rl.BeginDrawing()
+
+	for x in 0 ..< FRAME_WIDTH {
+		for y in 0 ..< FRAME_HEIGHT {
+			pix_x: i32 = auto_cast x
+			pix_y: i32 = auto_cast y
+			off := y * FRAME_WIDTH + x
+			color := frame.data[off]
+			rl.DrawRectangle(pix_x * scaling, pix_y * scaling, scaling, scaling, color)
+		}
+	}
+
+	rl.EndDrawing()
+}
+
+render_background :: proc(ppu: ^Ricoh2c02, frame: ^Frame) {
+	bank := get_background_pattern_addr(ppu.ctrl)
+
+	// Temporary using first nametable
+	for i in 0 ..< 0x03C0 {
+		tile_num := ppu.vram[i]
+		tile_x := i % 32
+		tile_y := i / 32
+		idx := bank + u16(tile_num) * 16
+		// fmt.println("TEST:", i, tile_num, tile_x, tile_y)
+		tile := ppu.chr_rom[idx:idx + 16]
+
+		// Render the tile
+		// TODO: Move to separate function???
+		for y in 0 ..< 8 {
+			upper := tile[y]
+			lower := tile[y + 8]
+
+			color: rl.Color
+			for x := 7; x >= 0; x -= 1 {
+				value := (1 & upper) << 1 | (1 & lower)
+				upper = upper >> 1
+				lower = lower >> 1
+				// These are currently random colors
+				switch value {
+				case 0:
+					color = SYSTEM_PALETTE[0x01]
+				case 1:
+					color = SYSTEM_PALETTE[0x23]
+				case 2:
+					color = SYSTEM_PALETTE[0x27]
+				case 3:
+					color = SYSTEM_PALETTE[0x30]
+				case:
+					log.panic("Can't be")
+				}
+				set_frame_pixel(frame, tile_x * 8 + x, tile_y * 8 + y, color)
+			}
+		}
+	}
 }

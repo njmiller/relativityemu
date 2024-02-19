@@ -71,7 +71,8 @@ handle_input :: proc(memory: []u8) {
 	if rl.IsKeyPressed(rl.KeyboardKey.D) do memory[0xFF] = 0x64
 }
 
-run :: proc(nes1: ^nes.NES) {
+
+run_snake :: proc(nes1: ^nes.NES) {
 	totCycles: int
 
 	screen_state := make([]rl.Color, 0x400)
@@ -121,13 +122,9 @@ run :: proc(nes1: ^nes.NES) {
 }
 
 debug6502 :: proc() {
-	/*source, success := os.read_entire_file_from_filename(
-		"C:/dev/6502_65C02_functional_tests/bin_files/6502_functional_test.bin",
-	)*/
-
-	// sw: time.Stopwatch
-
 	nes1 := nes.init_nes("games/nestest.nes")
+
+	nes1.cpu6502.pc = 0xC000
 
 	totCycles := 7
 	for totCycles < 30000 {
@@ -145,8 +142,6 @@ debug6502 :: proc() {
 
 
 	}
-
-	//run(&nes_state)
 }
 
 test_snake_game :: proc() {
@@ -483,7 +478,7 @@ test_snake_game :: proc() {
 
 	nes_state.cpu6502.pc = 0x0600
 
-	run(&nes_state)
+	run_snake(&nes_state)
 
 	// pc := 0
 	// for i in 0 ..< len(game_code) {
@@ -499,23 +494,38 @@ run_game :: proc(fn: string) {
 
 	nes_state := nes.init_nes(fn)
 
-	rl.InitWindow(320, 320, "Odin NES")
+	rl.InitWindow(1920, 1080, "Odin NES")
 	defer rl.CloseWindow()
 
 	rl.SetTargetFPS(60)
 
-	run(&nes_state)
+	nes.run(&nes_state)
 }
 
 test_render :: proc() {
-	prg, chr, mapper, mirroring := nes.read_ines("pacman.nes")
+	prg, chr, mapper, mirroring := nes.read_ines("games/pacman.nes")
+	tile_frame: nes.Frame
 
-	tile_frame := nes.show_tile(chr, 1, 0)
+	bank := 0
+	for i in 0 ..< 256 {
+		x_off := (i * 9) % 180
+		y_off := ((i * 9) / 180) * 9
+		// y_off := 0
+		nes.show_tile(&tile_frame, x_off, y_off, chr, bank, i)
+	}
 
-	rl.InitWindow(320, 320, "Test Render")
+	rl.InitWindow(1920, 1080, "Test Render")
 	defer rl.CloseWindow()
 
 	rl.SetTargetFPS(60)
+
+	scaling: i32 = 5
+	for {
+		rl.BeginDrawing()
+		rl.ClearBackground(rl.WHITE)
+		nes.render_frame(&tile_frame, scaling)
+		rl.EndDrawing()
+	}
 }
 
 main :: proc() {
@@ -523,9 +533,13 @@ main :: proc() {
 
 	context.logger = log.create_console_logger()
 
-	when ODIN_DEBUG {
-		debug6502()
-	} else {
-		run_game("games/snake.nes")
-	}
+	// when ODIN_DEBUG {
+	// debug6502()
+	// } else {
+	// run_game("games/snake.nes")
+	// test_render()
+	run_game("games/pacman.nes")
+	// nes_game := nes.init_nes("games/pacman.nes")
+	// nes.run(&nes_game)
+	// }
 }
