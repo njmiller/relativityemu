@@ -397,10 +397,9 @@ write_to_ppu_data :: proc(ppu: ^Ricoh2c02, data: u8) {
 
 	switch mem_addr {
 	case 0 ..= 0x1FFF:
-		log.error("Trying to write to CHR Rom")
+		log.fatal("Trying to write to CHR Rom")
 	case 0x2000 ..= 0x2FFF:
 		mem_addr_mirror := mirror_vram_addr(mem_addr, ppu.mirroring)
-		fmt.println("Writing to VRAM:", mem_addr_mirror, data)
 		ppu.vram[mem_addr_mirror] = data
 	case 0x3000 ..= 0x3EFF:
 		log.error("Address space 0x3000..0x3EFF is not expected to be used:", mem_addr)

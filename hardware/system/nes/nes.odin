@@ -9,9 +9,10 @@ Bus :: struct {
 	using bus: mos6502.Bus,
 	cpu_vram:  [2048]u8,
 	prg_rom:   []u8,
-	// rom:       Rom,
 	ppu:       Ricoh2c02,
 	mapper:    u8,
+	jp1:       JoyPad,
+	jp2:       JoyPad,
 }
 
 NES :: struct {
@@ -34,7 +35,8 @@ bus_mem_read :: proc(bus: ^mos6502.Bus, addr: u16) -> u8 {
 		mem_val = bus.cpu_vram[mirror_down_addr]
 	case 0x2000, 0x2001, 0x2003, 0x2005, 0x2006:
 		when ODIN_DEBUG {
-			// Because disassembling instruction might try to read from here
+			// Because disassembling instruction might try to read from here depending
+			// on the addressing mode.
 			log.warn("Attempt to read from write-only PPU address:", addr)
 		} else {
 			log.fatal("Attempt to read from write-only PPU address:", addr)
@@ -42,6 +44,7 @@ bus_mem_read :: proc(bus: ^mos6502.Bus, addr: u16) -> u8 {
 	case 0x2002:
 		mem_val = read_ppu_status(&bus.ppu)
 	case 0x2004:
+		mem_val = read_oamdata(&bus.ppu)
 	case 0x2007:
 		mem_val = read_ppu_data(&bus.ppu)
 	case 0x2008 ..= PPU_REGISTERS_MIRRORS_END:
@@ -49,6 +52,10 @@ bus_mem_read :: proc(bus: ^mos6502.Bus, addr: u16) -> u8 {
 		// read from that address instead
 		mirror_down_addr := addr & 0b00100000_00000111
 		mem_val = bus_mem_read(bus, mirror_down_addr)
+	case 0x4016:
+		mem_val = read_joypad(&bus.jp1)
+	case 0x4017:
+		mem_val = read_joypad(&bus.jp2)
 	case 0x8000 ..= 0xFFFF:
 		mem_val = prg_read(bus.prg_rom, addr)
 	case:
@@ -59,8 +66,6 @@ bus_mem_read :: proc(bus: ^mos6502.Bus, addr: u16) -> u8 {
 	return mem_val
 }
 
-// Maybe rewrite back as PPU_REGISTERS ..= PPU_REGISTERS_END and move
-// the switch statements here to a separate PPU read/write function
 bus_mem_write :: proc(bus: ^mos6502.Bus, addr: u16, data: u8) {
 	bus := cast(^Bus)bus
 
@@ -68,6 +73,7 @@ bus_mem_write :: proc(bus: ^mos6502.Bus, addr: u16, data: u8) {
 	case RAM ..= RAM_MIRRORS_END:
 		mirror_down_addr := addr & 0b00000111_11111111
 		bus.cpu_vram[mirror_down_addr] = data
+	// Start of the PPU registers
 	case 0x2000:
 		write_to_ctrl(&bus.ppu, data)
 	case 0x2001:
@@ -91,8 +97,12 @@ bus_mem_write :: proc(bus: ^mos6502.Bus, addr: u16, data: u8) {
 		bus_mem_write(bus, mirror_down_addr, data)
 	case 0x4014:
 		ppu_oam_dma(bus, data)
+	case 0x4016:
+		write_joypad(&bus.jp1, data)
+	case 0x4017:
+		write_joypad(&bus.jp2, data)
 	case 0x8000 ..= 0xFFFF:
-		log.error("Attempting to write to a cartridge ROM space.")
+		log.fatal("Attempting to write to a cartridge ROM space.")
 	case:
 		fmt.println("Ignoring mem write-access at", addr)
 	}
@@ -126,9 +136,6 @@ init_nes :: proc(fn: string) -> NES {
 	// The NES version of the CPU does not implement decimal mode
 	nes.cpu6502.dm_avail = false
 
-	// rom := load_rom(fn)
-	// nes.bus.rom = rom
-
 	prg_rom, chr_rom, mapper, mirroring := read_ines(fn)
 
 	nes.bus.prg_rom = prg_rom
@@ -157,13 +164,22 @@ reset :: proc(nes: ^NES) {
 	nes.cpu6502.status = 0x24 // TODO: Check this
 	nes.cpu6502.ec = 0
 
+	// Reset the joypad status
+	nes.bus.jp1.button_index = 0
+	nes.bus.jp1.strobe = false
+	nes.bus.jp1.button_status = {}
+
+	nes.bus.jp2.button_index = 0
+	nes.bus.jp2.strobe = false
+	nes.bus.jp2.button_status = {}
+
 	// Reset vector
 	low := nes.bus.read(&nes.bus, 0xFFFC)
 	high := nes.bus.read(&nes.bus, 0xFFFD)
 
 	reset_pc := (u16(high) << 8) | u16(low)
 
-	fmt.printf("RESET %4x", reset_pc)
+	// fmt.printf("RESET %4x", reset_pc)
 
 	nes.cpu6502.pc = auto_cast reset_pc
 
@@ -194,6 +210,10 @@ run :: proc(nes: ^NES) {
 	// num_cycles: int
 
 	for {
+
+		// Check for input and update the joypad structure every loop
+		check_input1(&nes.bus.jp1)
+		check_input2(&nes.bus.jp2)
 
 		// Check for NMI before executing each instruction
 		if poll_nmi_status(&nes.bus) do interrupt_nmi(&nes.cpu6502, &nes.bus)
