@@ -338,15 +338,8 @@ render_background :: proc(ppu: ^Ricoh2c02, frame: ^Frame) {
 		tile_x := i % 32
 		tile_y := i / 32
 		idx := bank + u16(tile_num) * 16
-		// fmt.println("TEST:", i, tile_num, tile_x, tile_y)
 		tile := ppu.chr_rom[idx:idx + 16]
 		pallette := bg_pallette(ppu, tile_x, tile_y)
-		// fmt.println("PALLETTE INFO:", tile_x, tile_y, idx, pallette)
-		// pallette = {0x01, 0x23, 0x27, 0x30}
-		// if tile_x == 16 && tile_y == 16 {
-		// pallette = {0x02, 0x35, 0x21, 0x15}
-		// fmt.println("PALETTE 16/16:", pallette, bank, tile_num, tile)
-		// }
 
 		for y in 0 ..< 8 {
 			upper := tile[y]
@@ -360,10 +353,6 @@ render_background :: proc(ppu: ^Ricoh2c02, frame: ^Frame) {
 				color := SYSTEM_PALETTE[pallette[value]]
 				if value == 0 do color = SYSTEM_PALETTE[ppu.palette_table[0]]
 
-				// if tile_x == 16 && tile_y == 16 {
-				// fmt.println("ABC:", value, pallette[value])
-				// fmt.println("Color, X, Y:", color, tile_x * 8 + x, tile_y * 8 + y)
-				// }
 				set_frame_pixel(frame, tile_x * 8 + x, tile_y * 8 + y, color)
 			}
 		}
@@ -378,8 +367,8 @@ render_sprites :: proc(ppu: ^Ricoh2c02, frame: ^Frame) {
 		tile_x: int = auto_cast ppu.oam_data[i + 3]
 		tile_y: int = auto_cast ppu.oam_data[i]
 
-		flip_horizontal := true if (ppu.oam_data[i + 2] >> 7) & 1 == 1 else false
-		flip_vertical := true if (ppu.oam_data[i + 2] >> 6) & 1 == 1 else false
+		flip_horizontal := true if (ppu.oam_data[i + 2] >> 6) & 1 == 1 else false
+		flip_vertical := true if (ppu.oam_data[i + 2] >> 7) & 1 == 1 else false
 
 		pallette_idx := ppu.oam_data[i + 2] & 0b11
 		pallette := sprite_pallette(ppu, pallette_idx)
