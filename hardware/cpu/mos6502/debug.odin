@@ -36,6 +36,8 @@ absolute_instruction :: proc(
 	high := bus.read(bus, auto_cast cpu.pc + 2)
 
 	fmt.printf("%02X %02X ", low, high)
+
+
 	if unofficial {
 		fmt.printf("*")
 	} else {
@@ -59,11 +61,12 @@ absolute_instruction :: proc(
 		fmt.printf(" @ %04X", addr)
 	}
 
-	if extra {
-		//addr := getCombined(val1, val2)
-		mval := bus.read(bus, auto_cast addr)
-		fmt.printf(" = %02X", mval)
-	}
+	// extra := false
+	// if extra {
+	//addr := getCombined(val1, val2)
+	mval := bus.read(bus, auto_cast addr)
+	fmt.printf(" = %02X", mval)
+	// }
 
 	nblank := 32 - len(text) - 6
 	if extra do nblank -= 5
@@ -250,6 +253,8 @@ display_cycles :: proc(cpu: ^MOS6502, ncycles: int) {
 }
 
 disassemble6502p_ver2 :: proc(cpu: ^MOS6502, bus: ^Bus) -> int {
+	context.user_index = 1
+
 	pc := cpu.pc
 	opcode: OpCode = auto_cast bus.read(bus, auto_cast pc)
 
@@ -312,6 +317,8 @@ disassemble6502p_ver2 :: proc(cpu: ^MOS6502, bus: ^Bus) -> int {
 	case .NoneAddressing:
 		return simple_instruction(opcode3, unofficial = opcodeinfo.unofficial)
 	}
+
+	context.user_index = 0
 
 	return 0
 }

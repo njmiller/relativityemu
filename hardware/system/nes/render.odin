@@ -3,9 +3,11 @@ package nes
 import "core:fmt"
 import "core:log"
 
-import rl "vendor:raylib"
+// import rl "vendor:raylib"
+import "vendor:sdl2"
 
-SYSTEM_PALETTE: [64]rl.Color :  {
+/*
+SYSTEM_PALETTE: [64]rl.Color =  {
 	rl.Color{0x80, 0x80, 0x80, 0xFF},
 	rl.Color{0x00, 0x3D, 0xA6, 0xFF},
 	rl.Color{0x00, 0x12, 0xB0, 0xFF},
@@ -72,20 +74,158 @@ SYSTEM_PALETTE: [64]rl.Color :  {
 	rl.Color{0x11, 0x11, 0x11, 0xFF},
 }
 
+SYSTEM_PALETTE2: [64]rl.Color =  {
+	rl.Color{24, 124, 124, 255},
+	rl.Color{0, 0, 252, 255},
+	rl.Color{0, 0, 188, 255},
+	rl.Color{68, 40, 188, 255},
+	rl.Color{148, 0, 132, 255},
+	rl.Color{168, 0, 32, 255},
+	rl.Color{168, 16, 0, 255},
+	rl.Color{136, 20, 0, 255},
+	rl.Color{80, 48, 0, 255},
+	rl.Color{0, 120, 0, 255},
+	rl.Color{0, 104, 0, 255},
+	rl.Color{0, 88, 0, 255},
+	rl.Color{0, 64, 88, 255},
+	rl.Color{0, 0, 0, 255},
+	rl.Color{0, 0, 0, 255},
+	rl.Color{0, 0, 0, 255},
+	rl.Color{188, 188, 188, 255},
+	rl.Color{0, 120, 248, 255},
+	rl.Color{0, 88, 248, 255},
+	rl.Color{104, 68, 252, 255},
+	rl.Color{216, 0, 204, 255},
+	rl.Color{228, 0, 88, 255},
+	rl.Color{248, 56, 0, 255},
+	rl.Color{228, 92, 16, 255},
+	rl.Color{172, 124, 0, 255},
+	rl.Color{0, 184, 0, 255},
+	rl.Color{0, 168, 0, 255},
+	rl.Color{0, 168, 68, 255},
+	rl.Color{0, 136, 136, 255},
+	rl.Color{0, 0, 0, 255},
+	rl.Color{0, 0, 0, 255},
+	rl.Color{0, 0, 0, 255},
+	rl.Color{248, 248, 248, 255},
+	rl.Color{60, 188, 252, 255},
+	rl.Color{104, 136, 252, 255},
+	rl.Color{152, 120, 248, 255},
+	rl.Color{248, 120, 248, 255},
+	rl.Color{248, 88, 152, 255},
+	rl.Color{248, 120, 88, 255},
+	rl.Color{252, 160, 68, 255},
+	rl.Color{248, 184, 0, 255},
+	rl.Color{184, 248, 24, 255},
+	rl.Color{88, 216, 84, 255},
+	rl.Color{88, 248, 152, 255},
+	rl.Color{0, 232, 216, 255},
+	rl.Color{120, 120, 120, 255},
+	rl.Color{0, 0, 0, 255},
+	rl.Color{0, 0, 0, 255},
+	rl.Color{252, 252, 252, 255},
+	rl.Color{164, 228, 252, 255},
+	rl.Color{184, 184, 248, 255},
+	rl.Color{216, 184, 248, 255},
+	rl.Color{248, 184, 248, 255},
+	rl.Color{248, 164, 192, 255},
+	rl.Color{240, 208, 176, 255},
+	rl.Color{252, 224, 168, 255},
+	rl.Color{248, 216, 120, 255},
+	rl.Color{216, 248, 120, 255},
+	rl.Color{184, 248, 184, 255},
+	rl.Color{184, 248, 216, 255},
+	rl.Color{0, 252, 252, 255},
+	rl.Color{248, 216, 248, 255},
+	rl.Color{0, 0, 0, 255},
+	rl.Color{0, 0, 0, 255},
+}
+*/
+
+rgb :: [3]u8
+
+SYSTEM_PALETTE: [64]rgb =  {
+	{124, 124, 124},
+	{0, 0, 252},
+	{0, 0, 188},
+	{68, 40, 188},
+	{148, 0, 132},
+	{168, 0, 32},
+	{168, 16, 0},
+	{136, 20, 0},
+	{80, 48, 0},
+	{0, 120, 0},
+	{0, 104, 0},
+	{0, 88, 0},
+	{0, 64, 88},
+	{0, 0, 0},
+	{0, 0, 0},
+	{0, 0, 0},
+	{188, 188, 188},
+	{0, 120, 248},
+	{0, 88, 248},
+	{104, 68, 252},
+	{216, 0, 204},
+	{228, 0, 88},
+	{248, 56, 0},
+	{228, 92, 16},
+	{172, 124, 0},
+	{0, 184, 0},
+	{0, 168, 0},
+	{0, 168, 68},
+	{0, 136, 136},
+	{0, 0, 0},
+	{0, 0, 0},
+	{0, 0, 0},
+	{248, 248, 248},
+	{60, 188, 252},
+	{104, 136, 252},
+	{152, 120, 248},
+	{248, 120, 248},
+	{248, 88, 152},
+	{248, 120, 88},
+	{252, 160, 68},
+	{248, 184, 0},
+	{184, 248, 24},
+	{88, 216, 84},
+	{88, 248, 152},
+	{0, 232, 216},
+	{120, 120, 120},
+	{0, 0, 0},
+	{0, 0, 0},
+	{252, 252, 252},
+	{164, 228, 252},
+	{184, 184, 248},
+	{216, 184, 248},
+	{248, 184, 248},
+	{248, 164, 192},
+	{240, 208, 176},
+	{252, 224, 168},
+	{248, 216, 120},
+	{216, 248, 120},
+	{184, 248, 184},
+	{184, 248, 216},
+	{0, 252, 252},
+	{248, 216, 248},
+	{0, 0, 0},
+	{0, 0, 0},
+}
 // Hard code in the NES resolution
 FRAME_WIDTH :: 256
 FRAME_HEIGHT :: 240
 
 Frame :: struct {
-	data: [FRAME_WIDTH * FRAME_HEIGHT]rl.Color,
+	data: [FRAME_WIDTH * FRAME_HEIGHT]rgb,
+	// data: matrix[FRAME_WIDTH, FRAME_HEIGHT]rl.Color,
 }
 
 // Set the color in one pixel in the frame
-set_frame_pixel :: proc(frame: ^Frame, x: int, y: int, color: rl.Color) {
+set_frame_pixel :: proc(frame: ^Frame, x: int, y: int, color: rgb) {
 	base := y * FRAME_WIDTH + x
 	if base < (FRAME_HEIGHT * FRAME_WIDTH) do frame.data[base] = color
 }
 
+/*
 // A tile is 16 bytes = 8*8*2 bits (4 possible colors = 2 bits). Each row is encoded using 2 bytes
 // that are 8 bytes away from each other. I.E. the color index for the first row is encoded in 0x0000
 // and 0x0008 in thw tile. Each bit in the byte corresponds to the same column.
@@ -122,10 +262,36 @@ show_tile :: proc(frame: ^Frame, x_off: int, y_off: int, chr_rom: []u8, bank: in
 		}
 	}
 }
+*/
 
-render_frame :: proc(frame: ^Frame, scaling: i32) {
+render_frame :: proc(frame: ^Frame, ri: ^RenderInfo) {
 
-	rl.BeginDrawing()
+	renderer := ri.renderer
+	texture := ri.texture
+
+	sdl2.RenderClear(renderer)
+
+	// Maybe have a texture and copy the pixel data straight to the texture
+	// instead of drawing every pixel, though that might be what is needed
+	// for the most accurate emulation for scanline stuff
+
+	/*
+	texture := sdl2.CreateTexture(
+		renderer,
+		auto_cast sdl2.PixelFormatEnum.RGB24,
+		sdl2.TextureAccess.STREAMING,
+		FRAME_WIDTH,
+		FRAME_HEIGHT,
+	)
+
+	sdl2.SetTextureBlendMode(texture, sdl2.BlendMode.NONE)
+	*/
+
+	/*
+	pitch: i32 = auto_cast FRAME_WIDTH * 3
+	succt := sdl2.LockTexture(texture, nil, auto_cast &frame.data[0], &pitch)
+	succc := sdl2.RenderCopy(renderer, texture, nil, nil)
+	*/
 
 	for x in 0 ..< FRAME_WIDTH {
 		for y in 0 ..< FRAME_HEIGHT {
@@ -133,12 +299,35 @@ render_frame :: proc(frame: ^Frame, scaling: i32) {
 			pix_y: i32 = auto_cast y
 			off := y * FRAME_WIDTH + x
 			color := frame.data[off]
-			rl.DrawRectangle(pix_x * scaling, pix_y * scaling, scaling, scaling, color)
+			sdl2.SetRenderDrawColor(renderer, color[0], color[1], color[2], 255)
+			sdl2.RenderDrawPoint(renderer, pix_x, pix_y)
+		}
+	}
+
+	sdl2.RenderPresent(renderer)
+}
+
+/*
+render_frame :: proc(frame: ^Frame, scaling: i32) {
+
+	rl.BeginDrawing()
+	rl.ClearBackground(rl.GREEN)
+
+	for x in 0 ..< FRAME_WIDTH {
+		for y in 0 ..< FRAME_HEIGHT {
+			pix_x: i32 = auto_cast x
+			pix_y: i32 = auto_cast y
+			off := y * FRAME_WIDTH + x
+			color := frame.data[off]
+			raylib_color = rl.Color{color[0], color[1], color[2], 255}
+			rl.DrawRectangle(pix_x * scaling, pix_y * scaling, scaling, scaling, raylib_color)
+			// rl.DrawPixel(pix_x, pix_y, color)
 		}
 	}
 
 	rl.EndDrawing()
 }
+*/
 
 render_background :: proc(ppu: ^Ricoh2c02, frame: ^Frame) {
 	bank := get_background_pattern_addr(ppu.ctrl)
@@ -151,33 +340,119 @@ render_background :: proc(ppu: ^Ricoh2c02, frame: ^Frame) {
 		idx := bank + u16(tile_num) * 16
 		// fmt.println("TEST:", i, tile_num, tile_x, tile_y)
 		tile := ppu.chr_rom[idx:idx + 16]
+		pallette := bg_pallette(ppu, tile_x, tile_y)
+		// fmt.println("PALLETTE INFO:", tile_x, tile_y, idx, pallette)
+		// pallette = {0x01, 0x23, 0x27, 0x30}
+		// if tile_x == 16 && tile_y == 16 {
+		// pallette = {0x02, 0x35, 0x21, 0x15}
+		// fmt.println("PALETTE 16/16:", pallette, bank, tile_num, tile)
+		// }
 
-		// Render the tile
-		// TODO: Move to separate function???
 		for y in 0 ..< 8 {
 			upper := tile[y]
 			lower := tile[y + 8]
 
-			color: rl.Color
 			for x := 7; x >= 0; x -= 1 {
-				value := (1 & upper) << 1 | (1 & lower)
+				value := (1 & lower) << 1 | (1 & upper)
 				upper = upper >> 1
 				lower = lower >> 1
-				// These are currently random colors
-				switch value {
-				case 0:
-					color = SYSTEM_PALETTE[0x01]
-				case 1:
-					color = SYSTEM_PALETTE[0x23]
-				case 2:
-					color = SYSTEM_PALETTE[0x27]
-				case 3:
-					color = SYSTEM_PALETTE[0x30]
-				case:
-					log.panic("Can't be")
-				}
+
+				color := SYSTEM_PALETTE[pallette[value]]
+				if value == 0 do color = SYSTEM_PALETTE[ppu.palette_table[0]]
+
+				// if tile_x == 16 && tile_y == 16 {
+				// fmt.println("ABC:", value, pallette[value])
+				// fmt.println("Color, X, Y:", color, tile_x * 8 + x, tile_y * 8 + y)
+				// }
 				set_frame_pixel(frame, tile_x * 8 + x, tile_y * 8 + y, color)
 			}
 		}
 	}
+}
+
+render_sprites :: proc(ppu: ^Ricoh2c02, frame: ^Frame) {
+	// Render the sprites
+	ndata := len(ppu.oam_data)
+	for i := ndata - 4; i >= 0; i -= 4 {
+		tile_idx := ppu.oam_data[i + 1]
+		tile_x: int = auto_cast ppu.oam_data[i + 3]
+		tile_y: int = auto_cast ppu.oam_data[i]
+
+		flip_horizontal := true if (ppu.oam_data[i + 2] >> 7) & 1 == 1 else false
+		flip_vertical := true if (ppu.oam_data[i + 2] >> 6) & 1 == 1 else false
+
+		pallette_idx := ppu.oam_data[i + 2] & 0b11
+		pallette := sprite_pallette(ppu, pallette_idx)
+
+		bank := get_sprite_pattern_addr(ppu.ctrl)
+
+		idx := bank + u16(tile_idx) * 16
+		tile := ppu.chr_rom[idx:idx + 16]
+
+		for y in 0 ..= 7 {
+			upper := tile[y]
+			lower := tile[y + 8]
+			for x := 7; x >= 0; x -= 1 {
+				value := (1 & lower) << 1 | (1 & upper)
+				upper = upper >> 1
+				lower = lower >> 1
+
+				if value == 0 do continue
+				color := SYSTEM_PALETTE[pallette[value]]
+
+				xpos := tile_x + x if !flip_horizontal else tile_x + 7 - x
+				ypos := tile_y + y if !flip_vertical else tile_y + 7 - y
+				set_frame_pixel(frame, xpos, ypos, color)
+			}
+		}
+	}
+}
+
+bg_pallette :: proc(ppu: ^Ricoh2c02, column: int, row: int) -> (res: [4]u8) {
+
+	attr_table_idx := row / 4 * 8 + column / 4
+	attr_byte := ppu.vram[0x3C0 + attr_table_idx]
+
+	idx_col, idx_row := column % 4 / 2, row % 4 / 2
+
+	pallette_idx: int
+	if idx_col == 0 && idx_row == 0 {
+		pallette_idx = auto_cast (attr_byte & 0b11)
+	} else if idx_col == 1 && idx_row == 0 {
+		pallette_idx = auto_cast ((attr_byte >> 2) & 0b11)
+	} else if idx_col == 0 && idx_row == 1 {
+		pallette_idx = auto_cast ((attr_byte >> 4) & 0b11)
+	} else if idx_col == 1 && idx_row == 1 {
+		pallette_idx = auto_cast ((attr_byte >> 6) & 0b11)
+	} else {
+		log.fatal("Issue with pallette retrieval.")
+	}
+
+	pallette_start := 4 * pallette_idx + 1
+
+	res =  {
+		ppu.palette_table[0],
+		ppu.palette_table[pallette_start],
+		ppu.palette_table[pallette_start + 1],
+		ppu.palette_table[pallette_start + 2],
+	}
+
+	// res[0] = SYSTEM_PALETTE[ppu.palette_table[0]]
+	// res[1] = SYSTEM_PALETTE[ppu.palette_table[pallette_start]]
+	// res[2] = SYSTEM_PALETTE[ppu.palette_table[pallette_start + 1]]
+	// res[3] = SYSTEM_PALETTE[ppu.palette_table[pallette_start + 2]]
+
+	return
+}
+
+sprite_pallette :: proc(ppu: ^Ricoh2c02, pallette_idx: u8) -> (res: [4]u8) {
+	start := 4 * pallette_idx + 0x11 // first 16 are bg pallettes
+
+	res[0] = 0
+	res[1] = ppu.palette_table[start]
+	res[2] = ppu.palette_table[start + 1]
+	res[3] = ppu.palette_table[start + 2]
+
+	return
+
 }

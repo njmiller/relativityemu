@@ -1,6 +1,9 @@
 package nes
 
-import rl "vendor:raylib"
+import "core:fmt"
+
+// import rl "vendor:raylib"
+import "vendor:sdl2"
 
 Buttons :: enum u8 {
 	RIGHT,
@@ -42,6 +45,7 @@ read_joypad :: proc(jp: ^JoyPad) -> u8 {
 	return res
 }
 
+/*
 check_input1 :: proc(jp: ^JoyPad) {
 
 	// Check if keys are pressed and update the structure
@@ -63,6 +67,56 @@ check_input1 :: proc(jp: ^JoyPad) {
 	if rl.IsKeyReleased(rl.KeyboardKey.S) do jp.button_status -= {.BUTTON_B}
 	if rl.IsKeyReleased(rl.KeyboardKey.SPACE) do jp.button_status -= {.SELECT}
 	if rl.IsKeyReleased(rl.KeyboardKey.ENTER) do jp.button_status -= {.START}
+
+}
+*/
+
+check_input1 :: proc(jp: ^JoyPad) {
+	event: sdl2.Event
+	for sdl2.PollEvent(&event) {
+		#partial switch event.type {
+		case .QUIT:
+			return
+		case .KEYDOWN:
+			#partial switch event.key.keysym.scancode {
+			case sdl2.SCANCODE_A:
+				jp.button_status += {.BUTTON_A}
+			case sdl2.SCANCODE_S:
+				jp.button_status += {.BUTTON_B}
+			case sdl2.SCANCODE_UP:
+				jp.button_status += {.UP}
+			case sdl2.SCANCODE_DOWN:
+				jp.button_status += {.DOWN}
+			case sdl2.SCANCODE_LEFT:
+				jp.button_status += {.LEFT}
+			case sdl2.SCANCODE_RIGHT:
+				jp.button_status += {.RIGHT}
+			case sdl2.SCANCODE_SPACE:
+				jp.button_status += {.SELECT}
+			case sdl2.SCANCODE_RETURN:
+				jp.button_status += {.START}
+			}
+		case .KEYUP:
+			#partial switch event.key.keysym.scancode {
+			case sdl2.SCANCODE_A:
+				jp.button_status -= {.BUTTON_A}
+			case sdl2.SCANCODE_S:
+				jp.button_status -= {.BUTTON_B}
+			case sdl2.SCANCODE_UP:
+				jp.button_status -= {.UP}
+			case sdl2.SCANCODE_DOWN:
+				jp.button_status -= {.DOWN}
+			case sdl2.SCANCODE_LEFT:
+				jp.button_status -= {.LEFT}
+			case sdl2.SCANCODE_RIGHT:
+				jp.button_status -= {.RIGHT}
+			case sdl2.SCANCODE_SPACE:
+				jp.button_status -= {.SELECT}
+			case sdl2.SCANCODE_RETURN:
+				jp.button_status -= {.START}
+			}
+		}
+	}
 
 }
 

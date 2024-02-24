@@ -2,8 +2,18 @@ package nes
 
 import "core:fmt"
 import "core:log"
+import "core:time"
+
+import "vendor:sdl2"
 
 import "hardware:cpu/mos6502"
+
+CLOCK_SPEED: u64 : 1789
+
+RenderInfo :: struct {
+	renderer: ^sdl2.Renderer,
+	texture:  ^sdl2.Texture,
+}
 
 Bus :: struct {
 	using bus: mos6502.Bus,
@@ -13,6 +23,8 @@ Bus :: struct {
 	mapper:    u8,
 	jp1:       JoyPad,
 	jp2:       JoyPad,
+	// renderer:  ^sdl2.Renderer,
+	ri:        RenderInfo,
 }
 
 NES :: struct {
@@ -35,9 +47,7 @@ bus_mem_read :: proc(bus: ^mos6502.Bus, addr: u16) -> u8 {
 		mem_val = bus.cpu_vram[mirror_down_addr]
 	case 0x2000, 0x2001, 0x2003, 0x2005, 0x2006:
 		when ODIN_DEBUG {
-			// Because disassembling instruction might try to read from here depending
-			// on the addressing mode.
-			log.warn("Attempt to read from write-only PPU address:", addr)
+			mem_val = 0 // because I might be disassembling instruction
 		} else {
 			log.fatal("Attempt to read from write-only PPU address:", addr)
 		}
@@ -56,6 +66,8 @@ bus_mem_read :: proc(bus: ^mos6502.Bus, addr: u16) -> u8 {
 		mem_val = read_joypad(&bus.jp1)
 	case 0x4017:
 		mem_val = read_joypad(&bus.jp2)
+	case 0x4000 ..= 0x4015:
+	// Ignore the APU stuff for now
 	case 0x8000 ..= 0xFFFF:
 		mem_val = prg_read(bus.prg_rom, addr)
 	case:
@@ -97,10 +109,12 @@ bus_mem_write :: proc(bus: ^mos6502.Bus, addr: u16, data: u8) {
 		bus_mem_write(bus, mirror_down_addr, data)
 	case 0x4014:
 		ppu_oam_dma(bus, data)
+	case 0x4000 ..= 0x4015:
+	// Ignore the APU now
 	case 0x4016:
 		write_joypad(&bus.jp1, data)
 	case 0x4017:
-		write_joypad(&bus.jp2, data)
+	// write_joypad(&bus.jp2, data)
 	case 0x8000 ..= 0xFFFF:
 		log.fatal("Attempting to write to a cartridge ROM space.")
 	case:
@@ -179,8 +193,6 @@ reset :: proc(nes: ^NES) {
 
 	reset_pc := (u16(high) << 8) | u16(low)
 
-	// fmt.printf("RESET %4x", reset_pc)
-
 	nes.cpu6502.pc = auto_cast reset_pc
 
 }
@@ -195,21 +207,28 @@ tick :: proc(bus: ^Bus, ncycles: int) {
 
 	bus.ncycles += ncycles
 
+	// Play catch-up with the PPU. Since it runs 3 times as fast execute
+	// 3 times the number of cycles as the previous CPU instruction
 	nmi_before := bus.ppu.nmi_interrupt
 	tick_ppu(&bus.ppu, 3 * ncycles)
 	nmi_after := bus.ppu.nmi_interrupt
 
 	if !nmi_before && nmi_after {
 		render_background(&bus.ppu, &frame)
-		render_frame(&frame, 5)
+		render_sprites(&bus.ppu, &frame)
+		render_frame(&frame, &bus.ri)
 	}
 }
 
 run :: proc(nes: ^NES) {
 
-	// num_cycles: int
+	// sw: time.Stopwatch
+	// time.stopwatch_reset(&sw)
+	// time.stopwatch_start(&sw)
+	// tmp1 := false
 
 	for {
+
 
 		// Check for input and update the joypad structure every loop
 		check_input1(&nes.bus.jp1)
@@ -231,11 +250,25 @@ run :: proc(nes: ^NES) {
 		// Execute next instruction and determine how long it took
 		num_cycles := mos6502.emulate6502p(&nes.cpu6502, &nes.bus)
 		tick(&nes.bus, num_cycles)
-		// tot_cycles += num_cycles
 
-		// Play catch-up with the PPU. Since it runs 3 times as fast execute
-		// 3 times the number of cycles as the previous CPU instruction
-		// tick_ppu(&nes.bus.ppu, 3 * num_cycles)
+		// Do some calculation based on the time to execute the instruction and time it would
+		// take NES to execute the instruction and sleep to match up
+		// time.accurate_sleep(4000) // nanoseconds
+
+		/*
+		if (nes.bus.ncycles % 5000) > 2000 do tmp1 = true
+		if (nes.bus.ncycles % 5000) < 100 {
+			if tmp1 {
+				time.stopwatch_stop(&sw)
+				duration := time.stopwatch_duration(sw)
+				dur_milli := time.duration_microseconds(duration)
+				fmt.println("DURATION:", nes.bus.ncycles, dur_milli, tmp1, nes.bus.ncycles % 5000)
+				time.stopwatch_reset(&sw)
+				time.stopwatch_start(&sw)
+				tmp1 = false
+			}
+		}
+		*/
 
 	}
 }

@@ -9,8 +9,13 @@ import "core:time"
 import "hardware:cpu/mos6502"
 import "hardware:system/nes"
 
-import rl "vendor:raylib"
+// import rl "vendor:raylib"
+import "vendor:sdl2"
 
+FRAME_WIDTH :: 256
+FRAME_HEIGHT :: 240
+
+/*
 get_color :: proc(val: u8) -> rl.Color {
 
 	switch val {
@@ -120,6 +125,7 @@ run_snake :: proc(nes1: ^nes.NES) {
 		//if totCycles > 50 do break
 	}
 }
+*/
 
 debug6502 :: proc() {
 	nes1 := nes.init_nes("games/nestest.nes")
@@ -144,6 +150,7 @@ debug6502 :: proc() {
 	}
 }
 
+/*
 test_snake_game :: proc() {
 
 	// Test game code for snake game
@@ -489,19 +496,62 @@ test_snake_game :: proc() {
 
 	// fmt.printf("%02x", state.ix)
 }
+*/
 
 run_game :: proc(fn: string) {
 
 	nes_state := nes.init_nes(fn)
 
+
+	/*
 	rl.InitWindow(1920, 1080, "Odin NES")
 	defer rl.CloseWindow()
 
 	rl.SetTargetFPS(60)
+	*/
+
+
+	assert(sdl2.Init(sdl2.INIT_VIDEO) == 0, sdl2.GetErrorString())
+	defer sdl2.Quit()
+
+	window := sdl2.CreateWindow(
+		"Odin Emulator",
+		sdl2.WINDOWPOS_CENTERED,
+		sdl2.WINDOWPOS_CENTERED,
+		640,
+		480,
+		sdl2.WINDOW_SHOWN,
+	)
+	assert(window != nil, sdl2.GetErrorString())
+	defer sdl2.DestroyWindow(window)
+
+	// Must not do VSync because we run the tick loop on the same thread as rendering.
+	renderer := sdl2.CreateRenderer(window, -1, sdl2.RENDERER_ACCELERATED)
+	assert(renderer != nil, sdl2.GetErrorString())
+	defer sdl2.DestroyRenderer(renderer)
+
+	scaling := 2
+	sdl2.RenderSetScale(renderer, auto_cast scaling, auto_cast scaling)
+
+	texture := sdl2.CreateTexture(
+		renderer,
+		auto_cast sdl2.PixelFormatEnum.RGB24,
+		sdl2.TextureAccess.STREAMING,
+		FRAME_WIDTH,
+		FRAME_HEIGHT,
+	)
+
+	sdl2.SetTextureBlendMode(texture, sdl2.BlendMode.NONE)
+
+	ri := nes.RenderInfo{renderer, texture}
+
+	nes_state.bus.ri = ri
 
 	nes.run(&nes_state)
 }
 
+
+/*
 test_render :: proc() {
 	prg, chr, mapper, mirroring := nes.read_ines("games/pacman.nes")
 	tile_frame: nes.Frame
@@ -527,18 +577,22 @@ test_render :: proc() {
 		rl.EndDrawing()
 	}
 }
+*/
 
 main :: proc() {
 	//test_snake_game()
 
 	context.logger = log.create_console_logger()
+	context.user_index = 0
 
 	// when ODIN_DEBUG {
 	// debug6502()
 	// } else {
 	// run_game("games/snake.nes")
 	// test_render()
-	run_game("games/pacman.nes")
+	run_game(os.args[1])
+	// run_game("games/nestest.nes")
+	// run_game("games/pacman.nes")
 	// nes_game := nes.init_nes("games/pacman.nes")
 	// nes.run(&nes_game)
 	// }

@@ -320,7 +320,7 @@ read_ppu_status :: proc(ppu: ^Ricoh2c02) -> u8 {
 	stat_u8: u8 = 0
 
 	// Reading status resets the w register.
-	reset_latch(ppu)
+	if context.user_index == 0 do reset_latch(ppu)
 
 	if .SPRITE_OVERFLOW in ppu.status do stat_u8 |= u8(Status_Flags.SPRITE_OVERFLOW)
 	if .SPRITE_0_HIT in ppu.status do stat_u8 |= u8(Status_Flags.SPRITE_0_HIT)
@@ -362,7 +362,9 @@ write_to_scroll :: proc(ppu: ^Ricoh2c02, data: u8) {
 @(private)
 read_ppu_data :: proc(ppu: ^Ricoh2c02) -> u8 {
 	mem_addr := get_addr(&ppu.addr)
-	increment_vram_addr(ppu)
+
+	// Because for debugging we don't want to increment addr on read
+	if context.user_index == 0 do increment_vram_addr(ppu)
 
 	result: u8
 	switch mem_addr {
@@ -397,7 +399,7 @@ write_to_ppu_data :: proc(ppu: ^Ricoh2c02, data: u8) {
 
 	switch mem_addr {
 	case 0 ..= 0x1FFF:
-		log.fatal("Trying to write to CHR Rom")
+		log.warn("Trying to write to CHR Rom")
 	case 0x2000 ..= 0x2FFF:
 		mem_addr_mirror := mirror_vram_addr(mem_addr, ppu.mirroring)
 		ppu.vram[mem_addr_mirror] = data
