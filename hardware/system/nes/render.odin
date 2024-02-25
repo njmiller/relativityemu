@@ -264,6 +264,23 @@ show_tile :: proc(frame: ^Frame, x_off: int, y_off: int, chr_rom: []u8, bank: in
 }
 */
 
+render_frame_texture :: proc(frame: ^Frame, ri: ^RenderInfo) {
+	renderer := ri.renderer
+	texture := ri.texture
+
+	sdl2.RenderClear(renderer)
+
+	// Maybe have a texture and copy the pixel data straight to the texture
+	// instead of drawing every pixel, though that might be what is needed
+	// for the most accurate emulation for scanline stuff
+
+	pitch: i32 = auto_cast FRAME_WIDTH * 3 * 2
+	succt := sdl2.LockTexture(texture, nil, auto_cast &frame.data[0], &pitch)
+	succc := sdl2.RenderCopy(renderer, texture, nil, nil)
+
+	sdl2.RenderPresent(renderer)
+}
+
 render_frame :: proc(frame: ^Frame, ri: ^RenderInfo) {
 
 	renderer := ri.renderer
@@ -330,30 +347,95 @@ render_frame :: proc(frame: ^Frame, scaling: i32) {
 */
 
 render_background :: proc(ppu: ^Ricoh2c02, frame: ^Frame) {
-	bank := get_background_pattern_addr(ppu.ctrl)
+	scroll_x := int(ppu.scroll.x_scroll)
+	scroll_y := int(ppu.scroll.y_scroll)
 
-	// Temporary using first nametable
+	main_nametable: []u8
+	second_nametable: []u8
+	ppu.mirroring = .HORIZONTAL
+	switch ppu.mirroring {
+	case .HORIZONTAL:
+		switch get_nametable_addr(ppu.ctrl) {
+		case 0x2000, 0x2400:
+			main_nametable = ppu.vram[0:0x400]
+			second_nametable = ppu.vram[0x400:0x800]
+		case 0x2800, 0x2C00:
+			main_nametable = ppu.vram[0x400:0x800]
+			second_nametable = ppu.vram[0:0x400]
+		}
+	// log.panic("Not supported mirroring type:", ppu.mirroring)
+	case .VERTICAL:
+		switch get_nametable_addr(ppu.ctrl) {
+		case 0x2000, 0x2800:
+			main_nametable = ppu.vram[0:0x400]
+			second_nametable = ppu.vram[0x400:0x800]
+		case 0x2400, 0x2C00:
+			main_nametable = ppu.vram[0x400:0x800]
+			second_nametable = ppu.vram[0:0x400]
+		}
+	case .FOUR_SCREEN:
+		log.panic("Not supported mirroring type:", ppu.mirroring)
+	}
+
+	// name_table := ppu.vram[0:0x400]
+
+	// vp1 := Rect{0, 0, 256, 240}
+	vp1 := Rect{scroll_x, scroll_y, 256, 240}
+	vp2x := Rect{0, 0, scroll_x, 240}
+	vp2y := Rect{0, 0, 256, scroll_y}
+
+	render_name_table(ppu, frame, main_nametable, vp1, -scroll_x, -scroll_y)
+
+	if scroll_x > 0 && scroll_y > 0 {
+		log.panic("Don't know what to do with both scroll_x/y > 0.")
+	} else if scroll_x > 0 {
+		render_name_table(ppu, frame, second_nametable, vp2x, 256 - scroll_x, 0)
+	} else if scroll_y > 0 {
+		render_name_table(ppu, frame, second_nametable, vp2y, 0, 240 - scroll_y)
+	}
+}
+
+render_name_table :: proc(
+	ppu: ^Ricoh2c02,
+	frame: ^Frame,
+	name_table: []u8,
+	view_port: Rect,
+	shift_x: int,
+	shift_y: int,
+) {
+	bank := get_background_pattern_addr(ppu.ctrl)
+	attribute_table := name_table[0x3c0:0x400]
+
 	for i in 0 ..< 0x03C0 {
-		tile_num := ppu.vram[i]
+		// tile_num := ppu.vram[i]
+		tile_num := name_table[i]
 		tile_x := i % 32
 		tile_y := i / 32
 		idx := bank + u16(tile_num) * 16
 		tile := ppu.chr_rom[idx:idx + 16]
-		pallette := bg_pallette(ppu, tile_x, tile_y)
+		// pallette := bg_pallette(ppu, tile_x, tile_y)
+		pallette := bg_pallette2(ppu, attribute_table, tile_x, tile_y)
 
 		for y in 0 ..< 8 {
-			upper := tile[y]
-			lower := tile[y + 8]
+			lower := tile[y]
+			upper := tile[y + 8]
 
 			for x := 7; x >= 0; x -= 1 {
-				value := (1 & lower) << 1 | (1 & upper)
+				value := (1 & upper) << 1 | (1 & lower)
 				upper = upper >> 1
 				lower = lower >> 1
 
 				color := SYSTEM_PALETTE[pallette[value]]
 				if value == 0 do color = SYSTEM_PALETTE[ppu.palette_table[0]]
 
-				set_frame_pixel(frame, tile_x * 8 + x, tile_y * 8 + y, color)
+				pixel_x := tile_x * 8 + x
+				pixel_y := tile_y * 8 + y
+				if pixel_x >= view_port.x1 &&
+				   pixel_x < view_port.x2 &&
+				   pixel_y >= view_port.y1 &&
+				   pixel_y < view_port.y2 {
+					set_frame_pixel(frame, shift_x + pixel_x, shift_y + pixel_y, color)
+				}
 			}
 		}
 	}
@@ -426,14 +508,40 @@ bg_pallette :: proc(ppu: ^Ricoh2c02, column: int, row: int) -> (res: [4]u8) {
 		ppu.palette_table[pallette_start + 2],
 	}
 
-	// res[0] = SYSTEM_PALETTE[ppu.palette_table[0]]
-	// res[1] = SYSTEM_PALETTE[ppu.palette_table[pallette_start]]
-	// res[2] = SYSTEM_PALETTE[ppu.palette_table[pallette_start + 1]]
-	// res[3] = SYSTEM_PALETTE[ppu.palette_table[pallette_start + 2]]
-
 	return
 }
 
+bg_pallette2 :: proc(ppu: ^Ricoh2c02, attr_table: []u8, column: int, row: int) -> (res: [4]u8) {
+
+	attr_table_idx := row / 4 * 8 + column / 4
+	attr_byte := attr_table[attr_table_idx]
+
+	idx_col, idx_row := column % 4 / 2, row % 4 / 2
+
+	pallette_idx: int
+	if idx_col == 0 && idx_row == 0 {
+		pallette_idx = auto_cast (attr_byte & 0b11)
+	} else if idx_col == 1 && idx_row == 0 {
+		pallette_idx = auto_cast ((attr_byte >> 2) & 0b11)
+	} else if idx_col == 0 && idx_row == 1 {
+		pallette_idx = auto_cast ((attr_byte >> 4) & 0b11)
+	} else if idx_col == 1 && idx_row == 1 {
+		pallette_idx = auto_cast ((attr_byte >> 6) & 0b11)
+	} else {
+		log.fatal("Issue with pallette retrieval.")
+	}
+
+	pallette_start := 4 * pallette_idx + 1
+
+	res =  {
+		ppu.palette_table[0],
+		ppu.palette_table[pallette_start],
+		ppu.palette_table[pallette_start + 1],
+		ppu.palette_table[pallette_start + 2],
+	}
+
+	return
+}
 sprite_pallette :: proc(ppu: ^Ricoh2c02, pallette_idx: u8) -> (res: [4]u8) {
 	start := 4 * pallette_idx + 0x11 // first 16 are bg pallettes
 
@@ -445,3 +553,84 @@ sprite_pallette :: proc(ppu: ^Ricoh2c02, pallette_idx: u8) -> (res: [4]u8) {
 	return
 
 }
+
+Rect :: struct {
+	x1, y1, x2, y2: int,
+}
+
+/*
+render_name_table2 :: proc(
+	ppu: ^Ricoh2c02,
+	frame: ^Frame,
+	name_table: []u8,
+	view_port: Rect,
+	shift_x: int,
+	shift_y: int,
+) {
+	bank := get_background_pattern_addr(ppu.ctrl)
+	attribute_table := name_table[0x3c0:0x400]
+
+	for i in 0 ..= 0x3c0 {
+		tile_x := i % 32
+		tile_y := i / 32
+		tile_idx := name_table[i]
+
+		idx := bank + 16 * u16(tile_idx)
+		tile := ppu.chr_rom[idx:idx + 16]
+		palette := bg_pallette2(ppu, attribute_table, tile_x, tile_y)
+
+		for y in 0 ..< 8 {
+			lower := tile[y]
+			upper := tile[y + 8]
+
+			for x := 7; x >= 0; x -= 1 {
+				value := (1 & upper) << 1 | (1 & lower)
+				upper = upper >> 1
+				lower = lower >> 1
+
+				color := SYSTEM_PALETTE[palette[value]]
+				if value == 0 do color = SYSTEM_PALETTE[ppu.palette_table[0]]
+
+				pixel_x := tile_x * 8 + x
+				pixel_y := tile_y * 8 + y
+
+				if pixel_x >= view_port.x1 &&
+				   pixel_x < view_port.x2 &&
+				   pixel_y >= view_port.y1 &&
+				   pixel_y < view_port.y2 {
+					set_frame_pixel(frame, shift_x + pixel_x, shift_y + pixel_y, color)
+				}
+			}
+		}
+	}
+}
+
+
+render_background2 :: proc(ppu: ^Ricoh2c02, frame: ^Frame) {
+	scroll_x := int(ppu.scroll.x_scroll)
+	scroll_y := int(ppu.scroll.y_scroll)
+
+	main_nametable: []u8
+	second_nametable: []u8
+	switch ppu.mirroring {
+	case .HORIZONTAL:
+		log.panic("Not supported mirroring type:", ppu.mirroring)
+	case .VERTICAL:
+		switch get_nametable_addr(ppu.ctrl) {
+		case 0x2000, 0x2800:
+			main_nametable = ppu.vram[0:0x400]
+			second_nametable = ppu.vram[0x400:0x800]
+		case 0x2400, 0x2C00:
+			main_nametable = ppu.vram[0x400:0x800]
+			second_nametable = ppu.vram[0:0x400]
+		}
+	case .FOUR_SCREEN:
+		log.panic("Not supported mirroring type:", ppu.mirroring)
+	}
+
+	rect1 := Rect{scroll_x, scroll_y, 256, 240}
+	rect2 := Rect{0, 0, scroll_x, 240}
+	render_name_table2(ppu, frame, main_nametable, rect1, -scroll_x, -scroll_y)
+	render_name_table2(ppu, frame, second_nametable, rect2, 256 - scroll_x, 0)
+}
+*/

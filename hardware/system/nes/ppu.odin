@@ -240,6 +240,10 @@ get_mask_bitset :: proc(data: u8) -> Mask_Bitset {
 	return bitset_tmp
 }
 
+show_sprites :: proc(ppu: ^Ricoh2c02) -> bool {
+	return .SHOW_SPRITES in ppu.mask
+}
+
 @(private)
 write_to_mask :: proc(ppu: ^Ricoh2c02, data: u8) {
 	ppu.mask = get_mask_bitset(data)
@@ -470,4 +474,11 @@ tick_ppu :: proc(ppu: ^Ricoh2c02, ncycles: int) -> bool {
 		}
 	}
 	return false
+}
+
+is_sprite_0_hit :: proc(ppu: ^Ricoh2c02, cycle: int) -> bool {
+	y := u16(ppu.oam_data[0])
+	x := int(ppu.oam_data[3])
+
+	return y == ppu.scanline && x <= cycle && show_sprites(ppu)
 }
