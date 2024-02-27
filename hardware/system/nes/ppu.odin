@@ -27,6 +27,7 @@ Ricoh2c02 :: struct {
 	scanline:          u16,
 	cycles:            int,
 	nmi_interrupt:     bool,
+	frame:             Frame,
 }
 
 // 0x2000 - Controller register (write) - done

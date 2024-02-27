@@ -13,6 +13,8 @@ CLOCK_SPEED: u64 : 1789
 RenderInfo :: struct {
 	renderer: ^sdl2.Renderer,
 	texture:  ^sdl2.Texture,
+	// surface:  ^sdl2.Surface,
+	// pixels:   []u8,
 }
 
 Bus :: struct {
@@ -156,8 +158,8 @@ init_nes :: proc(fn: string) -> NES {
 	nes.bus.mapper = mapper
 	nes.bus.ppu.chr_rom = chr_rom
 
-	if mirroring == 0 do nes.bus.ppu.mirroring = .VERTICAL
-	if mirroring == 1 do nes.bus.ppu.mirroring = .HORIZONTAL
+	if mirroring == 0 do nes.bus.ppu.mirroring = .HORIZONTAL
+	if mirroring == 1 do nes.bus.ppu.mirroring = .VERTICAL
 	if mirroring == 2 do nes.bus.ppu.mirroring = .FOUR_SCREEN
 
 	reset(&nes)
@@ -203,35 +205,46 @@ poll_nmi_status :: proc(bus: ^Bus) -> bool {
 }
 
 tick :: proc(bus: ^Bus, ncycles: int) {
-	frame: Frame
 
+	// frame := bus.ppu.frame
 	bus.ncycles += ncycles
 
 	// Play catch-up with the PPU. Since it runs 3 times as fast execute
 	// 3 times the number of cycles as the previous CPU instruction
+
 	nmi_before := bus.ppu.nmi_interrupt
 	tick_ppu(&bus.ppu, 3 * ncycles)
 	nmi_after := bus.ppu.nmi_interrupt
 
 	if !nmi_before && nmi_after {
-		render_background(&bus.ppu, &frame)
-		render_sprites(&bus.ppu, &frame)
-		render_frame(&frame, &bus.ri)
+
+		render_background(&bus.ppu, &bus.ppu.frame)
+		render_sprites(&bus.ppu, &bus.ppu.frame)
+		// render_frame(&frame, &bus.ri)
+		render_frame_texture(&bus.ppu.frame, &bus.ri)
 	}
+}
+
+calc_duration :: proc(sw: ^time.Stopwatch) -> i64 {
+	time.stopwatch_stop(sw)
+	duration := time.stopwatch_duration(sw^)
+	dur := time.duration_nanoseconds(duration)
+	time.stopwatch_reset(sw)
+	time.stopwatch_start(sw)
+
+	return dur
 }
 
 run :: proc(nes: ^NES) {
 
-	// sw: time.Stopwatch
-	// time.stopwatch_reset(&sw)
-	// time.stopwatch_start(&sw)
-	// tmp1 := false
+	sw: time.Stopwatch
 
+	time.stopwatch_start(&sw)
 	for {
 
-
 		// Check for input and update the joypad structure every loop
-		check_input1(&nes.bus.jp1)
+		ex := check_input1(&nes.bus.jp1)
+		if ex == -1 do return
 		check_input2(&nes.bus.jp2)
 
 		// Check for NMI before executing each instruction
@@ -253,19 +266,29 @@ run :: proc(nes: ^NES) {
 
 		// Do some calculation based on the time to execute the instruction and time it would
 		// take NES to execute the instruction and sleep to match up
+		dur := calc_duration(&sw)
+		ns_per_cycle := 558.6592
+		time_to_sleep: int = auto_cast (f64(num_cycles) * ns_per_cycle - f64(dur))
 		// time.accurate_sleep(4000) // nanoseconds
+		time.accurate_sleep(auto_cast time_to_sleep)
+		calc_duration(&sw) // need to reset stopwatch after sleep
 
 		/*
-		if (nes.bus.ncycles % 5000) > 2000 do tmp1 = true
-		if (nes.bus.ncycles % 5000) < 100 {
+		if (nes.bus.ncycles % 1600000) > 1000 do tmp1 = true
+		if (nes.bus.ncycles % 1600000) < 100 {
 			if tmp1 {
 				time.stopwatch_stop(&sw)
 				duration := time.stopwatch_duration(sw)
-				dur_milli := time.duration_microseconds(duration)
-				fmt.println("DURATION:", nes.bus.ncycles, dur_milli, tmp1, nes.bus.ncycles % 5000)
+				dur_milli := time.duration_seconds(duration)
+				fmt.println("DURATION:", nes.bus.ncycles, dur_milli, count, dur1, dur2, dur3, dur4)
 				time.stopwatch_reset(&sw)
 				time.stopwatch_start(&sw)
 				tmp1 = false
+				count = 0
+				dur1 = 0
+				dur2 = 0
+				dur3 = 0
+				dur4 = 0
 			}
 		}
 		*/

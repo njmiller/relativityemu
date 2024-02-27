@@ -502,15 +502,6 @@ run_game :: proc(fn: string) {
 
 	nes_state := nes.init_nes(fn)
 
-
-	/*
-	rl.InitWindow(1920, 1080, "Odin NES")
-	defer rl.CloseWindow()
-
-	rl.SetTargetFPS(60)
-	*/
-
-
 	assert(sdl2.Init(sdl2.INIT_VIDEO) == 0, sdl2.GetErrorString())
 	defer sdl2.Quit()
 
@@ -527,6 +518,7 @@ run_game :: proc(fn: string) {
 
 	// Must not do VSync because we run the tick loop on the same thread as rendering.
 	renderer := sdl2.CreateRenderer(window, -1, sdl2.RENDERER_ACCELERATED)
+	// renderer := sdl2.CreateRenderer(window, -1, sdl2.RENDERER_SOFTWARE)
 	assert(renderer != nil, sdl2.GetErrorString())
 	defer sdl2.DestroyRenderer(renderer)
 
@@ -536,12 +528,22 @@ run_game :: proc(fn: string) {
 	texture := sdl2.CreateTexture(
 		renderer,
 		auto_cast sdl2.PixelFormatEnum.RGB24,
+		// auto_cast sdl2.PixelFormatEnum.RGBA8888,
 		sdl2.TextureAccess.STREAMING,
 		FRAME_WIDTH,
 		FRAME_HEIGHT,
 	)
+	defer sdl2.DestroyTexture(texture)
 
 	sdl2.SetTextureBlendMode(texture, sdl2.BlendMode.NONE)
+
+	// pitch: i32 = nes.FRAME_WIDTH * 3
+	// npix := nes.FRAME_HEIGHT * nes.FRAME_WIDTH * 3
+
+	// sdl2.CreateRGBSurface()
+	// pixels: []u8 = make([]u8, npix)
+	// succt := sdl2.LockTexture(texture, nil, auto_cast &pixels, &pitch)
+	// defer sdl2.UnlockTexture(texture)
 
 	ri := nes.RenderInfo{renderer, texture}
 

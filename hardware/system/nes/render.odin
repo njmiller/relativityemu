@@ -2,6 +2,7 @@ package nes
 
 import "core:fmt"
 import "core:log"
+import "core:mem"
 
 // import rl "vendor:raylib"
 import "vendor:sdl2"
@@ -215,14 +216,22 @@ FRAME_WIDTH :: 256
 FRAME_HEIGHT :: 240
 
 Frame :: struct {
-	data: [FRAME_WIDTH * FRAME_HEIGHT]rgb,
-	// data: matrix[FRAME_WIDTH, FRAME_HEIGHT]rl.Color,
+	data:  [FRAME_WIDTH * FRAME_HEIGHT]rgb,
+	data2: [FRAME_HEIGHT * FRAME_WIDTH * 3]u8,
+	// data:  []rgb,
+	// data2: []u8,
 }
 
 // Set the color in one pixel in the frame
 set_frame_pixel :: proc(frame: ^Frame, x: int, y: int, color: rgb) {
 	base := y * FRAME_WIDTH + x
-	if base < (FRAME_HEIGHT * FRAME_WIDTH) do frame.data[base] = color
+	if base < (FRAME_HEIGHT * FRAME_WIDTH) {
+		frame.data[base] = color
+		idx := 3 * base
+		frame.data2[idx] = color[0]
+		frame.data2[idx + 1] = color[1]
+		frame.data2[idx + 2] = color[2]
+	}
 }
 
 /*
@@ -270,15 +279,25 @@ render_frame_texture :: proc(frame: ^Frame, ri: ^RenderInfo) {
 
 	sdl2.RenderClear(renderer)
 
-	// Maybe have a texture and copy the pixel data straight to the texture
-	// instead of drawing every pixel, though that might be what is needed
-	// for the most accurate emulation for scanline stuff
+	pitch: i32 = FRAME_WIDTH * 3
+	// pixels: []u8
 
-	pitch: i32 = auto_cast FRAME_WIDTH * 3 * 2
-	succt := sdl2.LockTexture(texture, nil, auto_cast &frame.data[0], &pitch)
+	npix :: FRAME_HEIGHT * FRAME_WIDTH * 3
+	pixels := make([]u8, npix)
+	// defer delete(pixels)
+
+	succt := sdl2.LockTexture(texture, nil, auto_cast &pixels, &pitch)
+
+	// copy frame.data to pixels
+	copy(pixels, frame.data2[:])
+
+	sdl2.UnlockTexture(texture)
+
 	succc := sdl2.RenderCopy(renderer, texture, nil, nil)
 
 	sdl2.RenderPresent(renderer)
+
+	// delete(pixels)
 }
 
 render_frame :: proc(frame: ^Frame, ri: ^RenderInfo) {
@@ -287,28 +306,6 @@ render_frame :: proc(frame: ^Frame, ri: ^RenderInfo) {
 	texture := ri.texture
 
 	sdl2.RenderClear(renderer)
-
-	// Maybe have a texture and copy the pixel data straight to the texture
-	// instead of drawing every pixel, though that might be what is needed
-	// for the most accurate emulation for scanline stuff
-
-	/*
-	texture := sdl2.CreateTexture(
-		renderer,
-		auto_cast sdl2.PixelFormatEnum.RGB24,
-		sdl2.TextureAccess.STREAMING,
-		FRAME_WIDTH,
-		FRAME_HEIGHT,
-	)
-
-	sdl2.SetTextureBlendMode(texture, sdl2.BlendMode.NONE)
-	*/
-
-	/*
-	pitch: i32 = auto_cast FRAME_WIDTH * 3
-	succt := sdl2.LockTexture(texture, nil, auto_cast &frame.data[0], &pitch)
-	succc := sdl2.RenderCopy(renderer, texture, nil, nil)
-	*/
 
 	for x in 0 ..< FRAME_WIDTH {
 		for y in 0 ..< FRAME_HEIGHT {
@@ -379,7 +376,6 @@ render_background :: proc(ppu: ^Ricoh2c02, frame: ^Frame) {
 
 	// name_table := ppu.vram[0:0x400]
 
-	// vp1 := Rect{0, 0, 256, 240}
 	vp1 := Rect{scroll_x, scroll_y, 256, 240}
 	vp2x := Rect{0, 0, scroll_x, 240}
 	vp2y := Rect{0, 0, 256, scroll_y}
@@ -557,80 +553,3 @@ sprite_pallette :: proc(ppu: ^Ricoh2c02, pallette_idx: u8) -> (res: [4]u8) {
 Rect :: struct {
 	x1, y1, x2, y2: int,
 }
-
-/*
-render_name_table2 :: proc(
-	ppu: ^Ricoh2c02,
-	frame: ^Frame,
-	name_table: []u8,
-	view_port: Rect,
-	shift_x: int,
-	shift_y: int,
-) {
-	bank := get_background_pattern_addr(ppu.ctrl)
-	attribute_table := name_table[0x3c0:0x400]
-
-	for i in 0 ..= 0x3c0 {
-		tile_x := i % 32
-		tile_y := i / 32
-		tile_idx := name_table[i]
-
-		idx := bank + 16 * u16(tile_idx)
-		tile := ppu.chr_rom[idx:idx + 16]
-		palette := bg_pallette2(ppu, attribute_table, tile_x, tile_y)
-
-		for y in 0 ..< 8 {
-			lower := tile[y]
-			upper := tile[y + 8]
-
-			for x := 7; x >= 0; x -= 1 {
-				value := (1 & upper) << 1 | (1 & lower)
-				upper = upper >> 1
-				lower = lower >> 1
-
-				color := SYSTEM_PALETTE[palette[value]]
-				if value == 0 do color = SYSTEM_PALETTE[ppu.palette_table[0]]
-
-				pixel_x := tile_x * 8 + x
-				pixel_y := tile_y * 8 + y
-
-				if pixel_x >= view_port.x1 &&
-				   pixel_x < view_port.x2 &&
-				   pixel_y >= view_port.y1 &&
-				   pixel_y < view_port.y2 {
-					set_frame_pixel(frame, shift_x + pixel_x, shift_y + pixel_y, color)
-				}
-			}
-		}
-	}
-}
-
-
-render_background2 :: proc(ppu: ^Ricoh2c02, frame: ^Frame) {
-	scroll_x := int(ppu.scroll.x_scroll)
-	scroll_y := int(ppu.scroll.y_scroll)
-
-	main_nametable: []u8
-	second_nametable: []u8
-	switch ppu.mirroring {
-	case .HORIZONTAL:
-		log.panic("Not supported mirroring type:", ppu.mirroring)
-	case .VERTICAL:
-		switch get_nametable_addr(ppu.ctrl) {
-		case 0x2000, 0x2800:
-			main_nametable = ppu.vram[0:0x400]
-			second_nametable = ppu.vram[0x400:0x800]
-		case 0x2400, 0x2C00:
-			main_nametable = ppu.vram[0x400:0x800]
-			second_nametable = ppu.vram[0:0x400]
-		}
-	case .FOUR_SCREEN:
-		log.panic("Not supported mirroring type:", ppu.mirroring)
-	}
-
-	rect1 := Rect{scroll_x, scroll_y, 256, 240}
-	rect2 := Rect{0, 0, scroll_x, 240}
-	render_name_table2(ppu, frame, main_nametable, rect1, -scroll_x, -scroll_y)
-	render_name_table2(ppu, frame, second_nametable, rect2, 256 - scroll_x, 0)
-}
-*/
