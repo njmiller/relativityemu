@@ -115,6 +115,7 @@ bus_mem_write :: proc(bus: ^mos6502.Bus, addr: u16, data: u8) {
 	// Ignore the APU now
 	case 0x4016:
 		write_joypad(&bus.jp1, data)
+		write_joypad(&bus.jp2, data)
 	case 0x4017:
 	// write_joypad(&bus.jp2, data)
 	case 0x8000 ..= 0xFFFF:
