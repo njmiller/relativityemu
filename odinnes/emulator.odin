@@ -9,11 +9,10 @@ import "core:time"
 import "hardware:cpu/mos6502"
 import "hardware:system/nes"
 
-// import rl "vendor:raylib"
 import "vendor:sdl2"
 
-FRAME_WIDTH :: 256
-FRAME_HEIGHT :: 240
+// FRAME_WIDTH :: 256
+// FRAME_HEIGHT :: 240
 
 /*
 get_color :: proc(val: u8) -> rl.Color {
@@ -530,8 +529,8 @@ run_game :: proc(fn: string) {
 		auto_cast sdl2.PixelFormatEnum.RGB24,
 		// auto_cast sdl2.PixelFormatEnum.RGBA8888,
 		sdl2.TextureAccess.STREAMING,
-		FRAME_WIDTH,
-		FRAME_HEIGHT,
+		nes.FRAME_WIDTH,
+		nes.FRAME_HEIGHT,
 	)
 	defer sdl2.DestroyTexture(texture)
 
@@ -549,7 +548,8 @@ run_game :: proc(fn: string) {
 
 	nes_state.bus.ri = ri
 
-	nes.run(&nes_state)
+	nes.run(nes_state)
+
 }
 
 

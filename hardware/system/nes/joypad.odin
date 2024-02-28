@@ -2,7 +2,6 @@ package nes
 
 import "core:fmt"
 
-// import rl "vendor:raylib"
 import "vendor:sdl2"
 
 Buttons :: enum u8 {
@@ -71,7 +70,7 @@ check_input1 :: proc(jp: ^JoyPad) {
 }
 */
 
-check_input1b :: proc(jp: ^JoyPad, keymap: map[sdl2.Scancode]Buttons) -> int {
+check_input1b :: proc(jp1: ^JoyPad, jp2: ^JoyPad, keymap: map[sdl2.Scancode]Buttons) -> int {
 	return -1
 }
 
@@ -129,4 +128,4 @@ check_input1 :: proc(jp: ^JoyPad) -> int {
 }
 
 // Just mapping joypad 1 and 2 to same inputs right now
-check_input2 := check_input1
+// check_input2 := check_input1

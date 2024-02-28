@@ -24,7 +24,7 @@ Bus :: struct {
 	ppu:       Ricoh2c02,
 	mapper:    u8,
 	jp1:       JoyPad,
-	jp2:       JoyPad,
+	// jp2:       JoyPad,
 	// renderer:  ^sdl2.Renderer,
 	ri:        RenderInfo,
 }
@@ -67,7 +67,7 @@ bus_mem_read :: proc(bus: ^mos6502.Bus, addr: u16) -> u8 {
 	case 0x4016:
 		mem_val = read_joypad(&bus.jp1)
 	case 0x4017:
-		mem_val = read_joypad(&bus.jp2)
+	// mem_val = read_joypad(&bus.jp2)
 	case 0x4000 ..= 0x4015:
 	// Ignore the APU stuff for now
 	case 0x8000 ..= 0xFFFF:
@@ -115,7 +115,7 @@ bus_mem_write :: proc(bus: ^mos6502.Bus, addr: u16, data: u8) {
 	// Ignore the APU now
 	case 0x4016:
 		write_joypad(&bus.jp1, data)
-		write_joypad(&bus.jp2, data)
+	// write_joypad(&bus.jp2, data)
 	case 0x4017:
 	// write_joypad(&bus.jp2, data)
 	case 0x8000 ..= 0xFFFF:
@@ -143,8 +143,9 @@ prg_read :: proc(prg_rom: []u8, addr: u16) -> u8 {
 	return prg_rom[addr]
 }
 
-init_nes :: proc(fn: string) -> NES {
-	nes := NES{}
+init_nes :: proc(fn: string) -> ^NES {
+	// nes := NES{}
+	nes := new(NES)
 
 	// Set up the bus read/write functions
 	nes.bus.read = bus_mem_read
@@ -163,7 +164,7 @@ init_nes :: proc(fn: string) -> NES {
 	if mirroring == 1 do nes.bus.ppu.mirroring = .VERTICAL
 	if mirroring == 2 do nes.bus.ppu.mirroring = .FOUR_SCREEN
 
-	reset(&nes)
+	reset(nes)
 
 	return nes
 }
@@ -186,9 +187,9 @@ reset :: proc(nes: ^NES) {
 	nes.bus.jp1.strobe = false
 	nes.bus.jp1.button_status = {}
 
-	nes.bus.jp2.button_index = 0
-	nes.bus.jp2.strobe = false
-	nes.bus.jp2.button_status = {}
+	// nes.bus.jp2.button_index = 0
+	// nes.bus.jp2.strobe = false
+	// nes.bus.jp2.button_status = {}
 
 	// Reset vector
 	low := nes.bus.read(&nes.bus, 0xFFFC)
@@ -246,7 +247,7 @@ run :: proc(nes: ^NES) {
 		// Check for input and update the joypad structure every loop
 		ex := check_input1(&nes.bus.jp1)
 		if ex == -1 do return
-		check_input2(&nes.bus.jp2)
+		// check_input2(&nes.bus.jp2)
 
 		// Check for NMI before executing each instruction
 		if poll_nmi_status(&nes.bus) do interrupt_nmi(&nes.cpu6502, &nes.bus)
