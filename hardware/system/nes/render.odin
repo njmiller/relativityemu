@@ -293,7 +293,9 @@ render_frame_texture :: proc(frame: ^Frame, ri: ^RenderInfo) {
 
 	sdl2.UnlockTexture(texture)
 
-	succc := sdl2.RenderCopy(renderer, texture, nil, nil)
+	rect := sdl2.Rect{0, 0, FRAME_WIDTH, FRAME_HEIGHT}
+
+	succc := sdl2.RenderCopy(renderer, texture, nil, &rect)
 
 	sdl2.RenderPresent(renderer)
 

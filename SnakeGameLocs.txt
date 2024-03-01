@@ -1,0 +1,4 @@
+start : 0x600
+init: 0x606
+initSnake: 0x60d
+generateApplePosition: 0x62a

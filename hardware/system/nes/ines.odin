@@ -8,9 +8,19 @@ import "core:slice"
 PRG_BANK_SIZE :: 16384 // 2**14 16kB
 CHR_BANK_SIZE :: 8192 // 2**13 8kB
 
-// Read the iNES v1 file format. Might move to NES system file later if there is a reason
-// to remove the io directory
-read_ines :: proc(fn: string) -> ([]u8, []u8, u8, u8) {
+// Implement the NES ROM struct because we only store what is currently accessible in the Bus
+// and can then use this for the different mapper routines
+ROM :: struct {
+	prg_rom:    []u8,
+	chr_rom:    []u8,
+	mapper:     int,
+	mirroring:  Mirroring,
+	nprg_banks: int,
+	nchr_banks: int,
+}
+
+// read_ines :: proc(fn: string) -> ([]u8, []u8, u8, u8) {
+read_ines :: proc(fn: string) -> ROM {
 	data, success := os.read_entire_file_from_filename(fn)
 	defer delete(data)
 
@@ -29,15 +39,15 @@ read_ines :: proc(fn: string) -> ([]u8, []u8, u8, u8) {
 		log.warn("BAD HEADER")
 	}
 
-	num_16 := data[4]
-	num_8 := data[5]
+	num_16: int = auto_cast data[4]
+	num_8: int = auto_cast data[5]
 	control1 := data[6]
 	control2 := data[7]
 	prg_ram_size_8 := data[8]
 	// Is data[9] parts of the zeroes????
 
 	// Get mapper from relevent bits of control1 and control2
-	mapper := (control2 & 0b1111_0000) | (control1 >> 4)
+	mapper: int = auto_cast ((control2 & 0b1111_0000) | (control1 >> 4))
 
 	// Check for valid INES 1.0 bits and complain if it is a valid
 	// INES 2.0 file
@@ -65,8 +75,8 @@ read_ines :: proc(fn: string) -> ([]u8, []u8, u8, u8) {
 	//TODO: Can I just return a slice of the input data or do I need to copy
 	// the data to a new array and delete the input data when function goes
 	// out of scope?
-	prg_rom_size := int(num_16) * PRG_BANK_SIZE
-	chr_rom_size := int(num_8) * CHR_BANK_SIZE
+	prg_rom_size := num_16 * PRG_BANK_SIZE
+	chr_rom_size := num_8 * CHR_BANK_SIZE
 	prg_rom := make([]u8, prg_rom_size)
 	chr_rom := make([]u8, chr_rom_size)
 
@@ -79,7 +89,16 @@ read_ines :: proc(fn: string) -> ([]u8, []u8, u8, u8) {
 	copy_slice(prg_rom, data[prg_start:prg_end])
 	copy_slice(chr_rom, data[chr_start:chr_end])
 
-	fmt.println("LEN PRG:", len(prg_rom))
-	
-	return prg_rom, chr_rom, mapper, mirroring
+	fmt.println("LEN PRG:", len(prg_rom), num_16)
+
+	mirroring2: Mirroring
+
+	if mirroring == 0 do mirroring2 = .HORIZONTAL
+	if mirroring == 1 do mirroring2 = .VERTICAL
+	if mirroring == 2 do mirroring2 = .FOUR_SCREEN
+
+	rom := ROM{prg_rom, chr_rom, mapper, mirroring2, num_16, num_8}
+
+	return rom
+	// return prg_rom, chr_rom, mapper, mirroring
 }

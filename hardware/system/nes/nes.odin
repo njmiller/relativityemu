@@ -8,6 +8,7 @@ import "vendor:sdl2"
 
 import "hardware:cpu/mos6502"
 
+
 CLOCK_SPEED: u64 : 1789
 
 RenderInfo :: struct {
@@ -22,11 +23,12 @@ Bus :: struct {
 	cpu_vram:  [2048]u8,
 	prg_rom:   []u8,
 	ppu:       Ricoh2c02,
-	mapper:    u8,
+	mapper:    MapperInfo,
 	jp1:       JoyPad,
-	// jp2:       JoyPad,
+	jp2:       JoyPad,
 	// renderer:  ^sdl2.Renderer,
 	ri:        RenderInfo,
+	rom:       ROM,
 }
 
 NES :: struct {
@@ -51,7 +53,8 @@ bus_mem_read :: proc(bus: ^mos6502.Bus, addr: u16) -> u8 {
 		when ODIN_DEBUG {
 			mem_val = 0 // because I might be disassembling instruction
 		} else {
-			log.fatal("Attempt to read from write-only PPU address:", addr)
+			log.warn("Attempt to read from write-only PPU address:", addr)
+			fmt.printf("%04X\n", addr)
 		}
 	case 0x2002:
 		mem_val = read_ppu_status(&bus.ppu)
@@ -71,7 +74,8 @@ bus_mem_read :: proc(bus: ^mos6502.Bus, addr: u16) -> u8 {
 	case 0x4000 ..= 0x4015:
 	// Ignore the APU stuff for now
 	case 0x8000 ..= 0xFFFF:
-		mem_val = prg_read(bus.prg_rom, addr)
+		// mem_val = bus.prg_rom[addr - 0x8000]
+		mem_val = prg_read(bus.prg_rom, &bus.mapper, addr)
 	case:
 		log.warn("Ignoring mem access at ", addr)
 		mem_val = 0
@@ -115,11 +119,14 @@ bus_mem_write :: proc(bus: ^mos6502.Bus, addr: u16, data: u8) {
 	// Ignore the APU now
 	case 0x4016:
 		write_joypad(&bus.jp1, data)
-	// write_joypad(&bus.jp2, data)
+		write_joypad(&bus.jp2, data)
 	case 0x4017:
 	// write_joypad(&bus.jp2, data)
 	case 0x8000 ..= 0xFFFF:
+		// This is where I would need to implement mapper stuff
 		log.fatal("Attempting to write to a cartridge ROM space.")
+	// mapper(bus, addr, data)
+
 	case:
 		fmt.println("Ignoring mem write-access at", addr)
 	}
@@ -135,13 +142,16 @@ ppu_oam_dma :: proc(bus: ^Bus, addr: u8) {
 	}
 }
 
+/*
 prg_read :: proc(prg_rom: []u8, addr: u16) -> u8 {
 	addr := addr - 0x8000
-	if len(prg_rom) == 0x4000 && addr >= 0x4000 {
-		addr = addr % 0x4000
-	}
+	// if len(prg_rom) == 0x4000 && addr >= 0x4000 {
+	// addr = addr % 0x4000
+	// }
+	// Should have implemented the mirroring already
 	return prg_rom[addr]
 }
+*/
 
 init_nes :: proc(fn: string) -> ^NES {
 	// nes := NES{}
@@ -154,15 +164,28 @@ init_nes :: proc(fn: string) -> ^NES {
 	// The NES version of the CPU does not implement decimal mode
 	nes.cpu6502.dm_avail = false
 
-	prg_rom, chr_rom, mapper, mirroring := read_ines(fn)
+	// prg_rom, chr_rom, mapper, mirroring := read_ines(fn)
+	rom := read_ines(fn)
 
-	nes.bus.prg_rom = prg_rom
-	nes.bus.mapper = mapper
-	nes.bus.ppu.chr_rom = chr_rom
+	// Both the ROM and its components are stored because of mappers
+	nes.bus.rom = rom
 
-	if mirroring == 0 do nes.bus.ppu.mirroring = .HORIZONTAL
-	if mirroring == 1 do nes.bus.ppu.mirroring = .VERTICAL
-	if mirroring == 2 do nes.bus.ppu.mirroring = .FOUR_SCREEN
+	// Bus only has PRG accessible from 0x8000 to 0xFFFF so we need to use the mapper
+	// code to figure out what part of the PRG is accessible
+	// nes.bus.prg_rom = init_mapper_prg(rom.prg_rom, nes.bus.mapper)
+
+	// Initialize the MapperInfo structure with the mapper num.
+	init_mapper(rom.mapper, &nes.bus.mapper, rom.nprg_banks, rom.nchr_banks)
+	// nes.bus.mapper.num = rom.mapper
+
+	// nes.bus.mapper = rom.mapper 
+	nes.bus.prg_rom = rom.prg_rom
+	nes.bus.ppu.chr_rom = rom.chr_rom
+	nes.bus.ppu.mirroring = rom.mirroring
+
+	// if mirroring == 0 do nes.bus.ppu.mirroring = .HORIZONTAL
+	// if mirroring == 1 do nes.bus.ppu.mirroring = .VERTICAL
+	// if mirroring == 2 do nes.bus.ppu.mirroring = .FOUR_SCREEN
 
 	reset(nes)
 
@@ -247,6 +270,7 @@ run :: proc(nes: ^NES) {
 		// Check for input and update the joypad structure every loop
 		ex := check_input1(&nes.bus.jp1)
 		if ex == -1 do return
+
 		// check_input2(&nes.bus.jp2)
 
 		// Check for NMI before executing each instruction
