@@ -23,11 +23,13 @@ Ricoh2c02 :: struct {
 	scroll:            ScrollRegister,
 	internal_data_buf: u8,
 	w:                 bool,
-	v, t, x:           u8,
+	x:                 u8,
+	v, t:              u16,
 	scanline:          u16,
 	cycles:            int,
 	nmi_interrupt:     bool,
 	frame:             Frame,
+	is_chr_ram:        bool,
 }
 
 // 0x2000 - Controller register (write)
@@ -39,51 +41,62 @@ Ricoh2c02 :: struct {
 // 0x2006 - Address (write x2)
 // 0x2007 - Data (read/write)
 // 0x2009 - OAM DMA (write)
+// 0x4014 - OAM DMA
 
 // Structure and functions related to the address register
 AddrRegister :: struct {
 	value: [2]u8,
 	// hi_ptr: bool,
+	t:     u16,
 }
 
-new_addr_register :: proc() -> AddrRegister {
-	addr: AddrRegister
-	// addr.hi_ptr = true
+// new_addr_register :: proc() -> AddrRegister {
+// addr: AddrRegister
+// addr.hi_ptr = true
 
-	return addr
-}
+// return addr
+// }
 
 set_addr :: proc(addr: ^AddrRegister, data: u16) {
-	addr.value[0] = auto_cast (data >> 8)
-	addr.value[1] = auto_cast (data & 0xFF)
+	// addr.value[0] = auto_cast (data >> 8)
+	// addr.value[1] = auto_cast (data & 0xFF)
+	addr.t = data
 }
 
 get_addr :: proc(addr: ^AddrRegister) -> u16 {
-	return (u16(addr.value[0]) << 8) | u16(addr.value[1])
+	// return (u16(addr.value[0]) << 8) | u16(addr.value[1])
+	return addr.t
+	// return ppu.x
 }
 
 update_addr :: proc(addr: ^AddrRegister, hi_ptr: bool, data: u8) {
 	if hi_ptr {
-		addr.value[0] = data
+		// addr.value[0] = data
+		addr.t = (addr.t & 0x00FF) | (u16(data) << 8)
 	} else {
-		addr.value[1] = data
+		// addr.value[1] = data
+		addr.t = (addr.t & 0xFF00) | u16(data)
 	}
 
 	// Mirror down the address if above 0x3FFF
 	// 0x3FFF = 0b00111111_11111111
-	if int(get_addr(addr)) > 0x3FFF do set_addr(addr, get_addr(addr) & 0x3FFF)
+	// if int(get_addr(addr)) > 0x3FFF do set_addr(addr, get_addr(addr) & 0x3FFF)
+	if addr.t > 0x3FFF do addr.t &= 0x3FFF
 }
 
 increment_addr :: proc(addr: ^AddrRegister, inc: u8) {
 
 	// Increment the lower bits and if it carries then increment the higher bits by 1 
-	lo := addr.value[1]
-	addr.value[1] += inc
-	if lo > addr.value[1] do addr.value[0] += 1
+	// lo := addr.value[1]
+	// addr.value[1] += inc
+	// if lo > addr.value[1] do addr.value[0] += 1
+
+	addr.t += u16(inc)
 
 	// Mirror down the address if above 0x3FFF
 	// 0x3FFF = 0b00111111_11111111
-	if int(get_addr(addr)) > 0x3FFF do set_addr(addr, get_addr(addr) & 0x3FFF)
+	// if int(get_addr(addr)) > 0x3FFF do set_addr(addr, get_addr(addr) & 0x3FFF)
+	if addr.t > 0x3FFF do addr.t &= 0x3FFF
 }
 
 reset_latch :: proc(ppu: ^Ricoh2c02) {
@@ -92,6 +105,13 @@ reset_latch :: proc(ppu: ^Ricoh2c02) {
 
 write_to_addr :: proc(ppu: ^Ricoh2c02, value: u8) {
 	update_addr(&ppu.addr, ppu.w, value)
+	// if ppu.w {
+	// Zeroth 14th bit on first write
+	// value := value & 0b1011_1111
+	// ppu.t = u16(value) << 8 & (ppu.t & 0x00FF)
+	// } else {
+	// ppu.t = (ppu.t & 0xFF00) | u16(value)
+	// }
 	ppu.w = !ppu.w
 }
 
@@ -101,7 +121,7 @@ write_to_addr :: proc(ppu: ^Ricoh2c02, value: u8) {
 // ---- ----
 // VPHB SINN
 // |||| ||||
-// |||| ||++- Base nametable address
+// |||| ||++- Base nametable address 
 // |||| ||    (0 = $2000; 1 = $2400; 2 = $2800; 3 = $2C00)
 // |||| |+--- VRAM address increment per CPU read/write of PPUDATA
 // |||| |     (0: add 1, going across; 1: add 32, going down)
@@ -111,8 +131,7 @@ write_to_addr :: proc(ppu: ^Ricoh2c02, value: u8) {
 // ||+------- Sprite size (0: 8x8 pixels; 1: 8x16 pixels – see PPU OAM#Byte 1)
 // |+-------- PPU master/slave select
 // |          (0: read backdrop from EXT pins; 1: output color on EXT pins)
-// +--------- Generate an NMI at the start of the
-//    		  vertical blanking interval (0: off; 1: on)
+// +--------- Vblank NMI enable (0: off; 1: on)
 //
 Controller_Flags :: enum u8 {
 	NAMETABLE1              = 0b00000001,
@@ -122,7 +141,7 @@ Controller_Flags :: enum u8 {
 	BACKGROUND_PATTERN_ADDR = 0b00010000,
 	SPRITE_SIZE             = 0b00100000,
 	MASTER_SLAVE_SELECT     = 0b01000000,
-	GENERATE_NMI            = 0b10000000,
+	NMI_ENABLE              = 0b10000000,
 }
 
 Controller_Bitset :: bit_set[Controller_Flags]
@@ -168,7 +187,7 @@ poll_nmi_interrupt :: proc(ppu: ^Ricoh2c02) -> bool {
 }
 
 generate_vblank_nmi :: proc(ctrl: Controller_Bitset) -> bool {
-	return .GENERATE_NMI in ctrl
+	return .NMI_ENABLE in ctrl
 }
 
 get_nametable_addr :: proc(ctrl: Controller_Bitset) -> u16 {
@@ -211,8 +230,8 @@ get_sprite_pattern_addr :: proc(ctrl: Controller_Bitset) -> u16 {
 // |||| |||+- Greyscale (0: normal color, 1: produce a greyscale display)
 // |||| ||+-- 1: Show background in leftmost 8 pixels of screen, 0: Hide
 // |||| |+--- 1: Show sprites in leftmost 8 pixels of screen, 0: Hide
-// |||| +---- 1: Show background
-// |||+------ 1: Show sprites
+// |||| +---- 1: Enable background rendering
+// |||+------ 1: Enable sprite rendering
 // ||+------- Emphasize red (green on PAL/Dendy)
 // |+-------- Emphasize green (red on PAL/Dendy)
 // +--------- Emphasize blue
@@ -380,7 +399,8 @@ write_to_scroll :: proc(ppu: ^Ricoh2c02, data: u8) {
 
 @(private)
 read_ppu_data :: proc(ppu: ^Ricoh2c02) -> u8 {
-	mem_addr := get_addr(&ppu.addr)
+	// mem_addr := get_addr(&ppu.addr)
+	mem_addr := ppu.addr.t
 
 	// Because for debugging output we don't want to increment addr on read
 	if context.user_index == 0 do increment_vram_addr(ppu)
@@ -417,12 +437,14 @@ read_ppu_data :: proc(ppu: ^Ricoh2c02) -> u8 {
 
 @(private)
 write_to_ppu_data :: proc(ppu: ^Ricoh2c02, data: u8) {
-	mem_addr := get_addr(&ppu.addr)
+	// mem_addr := get_addr(&ppu.addr)
+	mem_addr := ppu.addr.t
 	increment_vram_addr(ppu)
 
 	switch mem_addr {
 	case 0 ..= 0x1FFF:
-		log.warn("Trying to write to CHR Rom")
+		if ppu.is_chr_ram do ppu.chr_rom[mem_addr] = data
+		else do log.warn("Trying to write to CHR Rom")
 	case 0x2000 ..= 0x2FFF:
 		mem_addr_mirror := mirror_vram_addr(mem_addr, ppu.mirroring)
 		ppu.vram[mem_addr_mirror] = data
@@ -451,6 +473,13 @@ write_to_ppu_data :: proc(ppu: ^Ricoh2c02, data: u8) {
 
 increment_vram_addr :: proc(ppu: ^Ricoh2c02) {
 	increment_addr(&ppu.addr, vram_addr_increment(&ppu.ctrl))
+
+	// inc := vram_addr_increment(&ppu.ctrl)
+	// ppu.t += u16(inc)
+
+	// Mirror down the address if above 0x3FFF
+	// 0x3FFF = 0b00111111_11111111
+	// if ppu.t > 0x3FFF do ppu.t &= 0x3FFF
 }
 
 // TODO: Mirroring
@@ -504,4 +533,57 @@ is_sprite_0_hit :: proc(ppu: ^Ricoh2c02, cycle: int) -> bool {
 	x := int(ppu.oam_data[3])
 
 	return y == ppu.scanline && x <= cycle && show_sprites(ppu)
+}
+
+write_ppu_register :: proc(ppu: ^Ricoh2c02, addr: u16, data: u8) {
+	switch addr {
+	case 0x2000:
+		write_to_ctrl(ppu, data)
+	case 0x2001:
+		write_to_mask(ppu, data)
+	case 0x2002:
+		log.panic("Attempting to write to status which is read only")
+	case 0x2003:
+		write_oamaddr(ppu, data)
+	case 0x2004:
+		write_oamdata(ppu, data)
+	case 0x2005:
+		write_to_scroll(ppu, data)
+	case 0x2006:
+		write_to_addr(ppu, data)
+	case 0x2007:
+		write_to_ppu_data(ppu, data)
+	case 0x2008 ..= PPU_REGISTERS_MIRRORS_END:
+		// Calculate what address this address mirrors and write
+		// to that address
+		mirror_down_addr := addr & 0b00100000_00000111
+		// fmt.printf("Writing %04X %04x\n", addr, mirror_down_addr)
+		write_ppu_register(ppu, mirror_down_addr, data)
+	}
+}
+
+read_ppu_register :: proc(ppu: ^Ricoh2c02, addr: u16) -> u8 {
+	mem_val: u8
+	switch addr {
+	case 0x2000, 0x2001, 0x2003, 0x2005, 0x2006:
+		when ODIN_DEBUG {
+			mem_val = 0 // because I might be disassembling instruction
+		} else {
+			log.warn("Attempt to read from write-only PPU address:", addr)
+			fmt.printf("%04X\n", addr)
+		}
+	case 0x2002:
+		mem_val = read_ppu_status(ppu)
+	case 0x2004:
+		mem_val = read_oamdata(ppu)
+	case 0x2007:
+		mem_val = read_ppu_data(ppu)
+	case 0x2008 ..= PPU_REGISTERS_MIRRORS_END:
+		// Calculate what address this address mirrors and then
+		// read from that address instead
+		mirror_down_addr := addr & 0b00100000_00000111
+		// fmt.printf("Reading %04X %04x\n", addr, mirror_down_addr)
+		mem_val = read_ppu_register(ppu, mirror_down_addr)
+	}
+	return mem_val
 }

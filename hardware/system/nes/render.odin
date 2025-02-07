@@ -145,7 +145,7 @@ SYSTEM_PALETTE2: [64]rl.Color =  {
 
 rgb :: [3]u8
 
-SYSTEM_PALETTE: [64]rgb =  {
+SYSTEM_PALETTE: [64]rgb = {
 	{124, 124, 124},
 	{0, 0, 252},
 	{0, 0, 188},
@@ -293,7 +293,9 @@ render_frame_texture :: proc(frame: ^Frame, ri: ^RenderInfo) {
 
 	sdl2.UnlockTexture(texture)
 
-	succc := sdl2.RenderCopy(renderer, texture, nil, nil)
+	rect := sdl2.Rect{0, 0, FRAME_WIDTH, FRAME_HEIGHT}
+
+	succc := sdl2.RenderCopy(renderer, texture, nil, &rect)
 
 	sdl2.RenderPresent(renderer)
 
@@ -497,7 +499,7 @@ bg_pallette :: proc(ppu: ^Ricoh2c02, column: int, row: int) -> (res: [4]u8) {
 
 	pallette_start := 4 * pallette_idx + 1
 
-	res =  {
+	res = {
 		ppu.palette_table[0],
 		ppu.palette_table[pallette_start],
 		ppu.palette_table[pallette_start + 1],
@@ -529,7 +531,7 @@ bg_pallette2 :: proc(ppu: ^Ricoh2c02, attr_table: []u8, column: int, row: int) -
 
 	pallette_start := 4 * pallette_idx + 1
 
-	res =  {
+	res = {
 		ppu.palette_table[0],
 		ppu.palette_table[pallette_start],
 		ppu.palette_table[pallette_start + 1],
