@@ -30,13 +30,13 @@ Ricoh2c02 :: struct {
 	frame:             Frame,
 }
 
-// 0x2000 - Controller register (write) - done
+// 0x2000 - Controller register (write)
 // 0x2001 - Mask register (write) - done
-// 0x2002 - Status register (read) - done
+// 0x2002 - Status register (read)
 // 0x2003 - OAM address (write)
 // 0x2004 - OAM data (read/write)
 // 0x2005 - Scroll (write x2) - done
-// 0x2006 - Address (write x2) - done
+// 0x2006 - Address (write x2)
 // 0x2007 - Data (read/write)
 // 0x2009 - OAM DMA (write)
 
@@ -202,7 +202,7 @@ get_sprite_pattern_addr :: proc(ctrl: Controller_Bitset) -> u16 {
 	return addr
 }
 
-// Mask Register
+// Mask Register ($2001 write)
 //
 // 7  bit  0
 // ---- ----
@@ -245,6 +245,10 @@ show_sprites :: proc(ppu: ^Ricoh2c02) -> bool {
 	return .SHOW_SPRITES in ppu.mask
 }
 
+show_background :: proc(ppu: ^Ricoh2c02) -> bool {
+	return .SHOW_BACKGROUND in ppu.mask
+}
+
 @(private)
 write_to_mask :: proc(ppu: ^Ricoh2c02, data: u8) {
 	ppu.mask = get_mask_bitset(data)
@@ -280,11 +284,21 @@ Status_Flags :: enum u8 {
 
 Status_Bitset :: bit_set[Status_Flags]
 
+/*
 set_sprite_overflow :: proc(status: Status_Bitset, set: bool) -> Status_Bitset {
 	if set {
 		return status + {.SPRITE_OVERFLOW}
 	} else {
 		return status - {.SPRITE_OVERFLOW}
+	}
+}
+*/
+
+set_sprite_overflow :: proc(ppu: ^Ricoh2c02, set: bool) {
+	if set {
+		ppu.status += {.SPRITE_OVERFLOW}
+	} else {
+		ppu.status -= {.SPRITE_OVERFLOW}
 	}
 }
 
@@ -368,7 +382,7 @@ write_to_scroll :: proc(ppu: ^Ricoh2c02, data: u8) {
 read_ppu_data :: proc(ppu: ^Ricoh2c02) -> u8 {
 	mem_addr := get_addr(&ppu.addr)
 
-	// Because for debugging we don't want to increment addr on read
+	// Because for debugging output we don't want to increment addr on read
 	if context.user_index == 0 do increment_vram_addr(ppu)
 
 	result: u8
@@ -380,7 +394,11 @@ read_ppu_data :: proc(ppu: ^Ricoh2c02) -> u8 {
 		result = ppu.internal_data_buf
 		ppu.internal_data_buf = ppu.vram[mirror_vram_addr(mem_addr, ppu.mirroring)]
 	case 0x3000 ..= 0x3EFF:
-		log.error("Address space 0x3000..0x3EFF is not expected to be used:", mem_addr)
+		// $3000-3EFF is usually a mirror of the 2kB region from $2000-2EFF. 
+		// The PPU does not render from this address range, so this space has negligible utility.
+		result = ppu.internal_data_buf
+		ppu.internal_data_buf = ppu.vram[mirror_vram_addr(mem_addr - 0x1000, ppu.mirroring)]
+	// log.error("Address space 0x3000..0x3EFF is not expected to be used:", mem_addr)
 	// Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C. 
 	// Note that this goes for writing as well as reading. A symptom of not having implemented
 	//  this correctly in an emulator is the sky being black in Super Mario Bros., which writes
@@ -409,7 +427,11 @@ write_to_ppu_data :: proc(ppu: ^Ricoh2c02, data: u8) {
 		mem_addr_mirror := mirror_vram_addr(mem_addr, ppu.mirroring)
 		ppu.vram[mem_addr_mirror] = data
 	case 0x3000 ..= 0x3EFF:
-		log.error("Address space 0x3000..0x3EFF is not expected to be used:", mem_addr)
+		// $3000-3EFF is usually a mirror of the 2kB region from $2000-2EFF. 
+		// The PPU does not render from this address range, so this space has negligible utility.
+		mem_addr_mirror := mirror_vram_addr(mem_addr - 0x1000, ppu.mirroring)
+		ppu.vram[mem_addr_mirror] = data
+	// log.error("Address space 0x3000..0x3EFF is not expected to be used:", mem_addr)
 	// Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C. 
 	// Note that this goes for writing as well as reading. A symptom of not having implemented
 	//  this correctly in an emulator is the sky being black in Super Mario Bros., which writes

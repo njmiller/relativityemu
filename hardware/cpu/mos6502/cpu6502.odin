@@ -1,3 +1,4 @@
+#+feature dynamic-literals
 package cpu6502
 
 import "core:fmt"

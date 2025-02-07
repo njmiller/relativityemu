@@ -63,6 +63,7 @@ bus_mem_read :: proc(bus: ^mos6502.Bus, addr: u16) -> u8 {
 		// Calculate what address this address mirrors and then
 		// read from that address instead
 		mirror_down_addr := addr & 0b00100000_00000111
+		// fmt.printf("Reading %04X %04x\n", addr, mirror_down_addr)
 		mem_val = bus_mem_read(bus, mirror_down_addr)
 	case 0x4016:
 		mem_val = read_joypad(&bus.jp1)
@@ -108,6 +109,7 @@ bus_mem_write :: proc(bus: ^mos6502.Bus, addr: u16, data: u8) {
 		// Calculate what address this address mirrors and write
 		// to that address
 		mirror_down_addr := addr & 0b00100000_00000111
+		// fmt.printf("Writing %04X %04x\n", addr, mirror_down_addr)
 		bus_mem_write(bus, mirror_down_addr, data)
 	case 0x4014:
 		ppu_oam_dma(bus, data)
