@@ -16,7 +16,6 @@ Ricoh2c02 :: struct {
 	oam_data:          [256]u8,
 	oam_addr:          u8,
 	mirroring:         Mirroring,
-	addr:              AddrRegister,
 	ctrl:              Controller_Bitset,
 	mask:              Mask_Bitset,
 	status:            Status_Bitset,
@@ -43,75 +42,24 @@ Ricoh2c02 :: struct {
 // 0x2009 - OAM DMA (write)
 // 0x4014 - OAM DMA
 
-// Structure and functions related to the address register
-AddrRegister :: struct {
-	value: [2]u8,
-	// hi_ptr: bool,
-	t:     u16,
-}
-
-// new_addr_register :: proc() -> AddrRegister {
-// addr: AddrRegister
-// addr.hi_ptr = true
-
-// return addr
+// reset_latch :: proc(ppu: ^Ricoh2c02) {
+// ppu.w = false
 // }
 
-set_addr :: proc(addr: ^AddrRegister, data: u16) {
-	// addr.value[0] = auto_cast (data >> 8)
-	// addr.value[1] = auto_cast (data & 0xFF)
-	addr.t = data
-}
-
-get_addr :: proc(addr: ^AddrRegister) -> u16 {
-	// return (u16(addr.value[0]) << 8) | u16(addr.value[1])
-	return addr.t
-	// return ppu.x
-}
-
-update_addr :: proc(addr: ^AddrRegister, hi_ptr: bool, data: u8) {
-	if hi_ptr {
-		// addr.value[0] = data
-		addr.t = (addr.t & 0x00FF) | (u16(data) << 8)
+write_to_addr :: proc(ppu: ^Ricoh2c02, value: u8) {
+	if !ppu.w {
+		ppu.t = (ppu.t & 0x00FF) | (u16(value) << 8)
 	} else {
-		// addr.value[1] = data
-		addr.t = (addr.t & 0xFF00) | u16(data)
+		ppu.t = (ppu.t & 0xFF00) | u16(value)
+		// Mirror down the address if above 0x3FFF
+		// 0x3FFF = 0b00111111_11111111
+		if ppu.t > 0x3FFF do ppu.t &= 0x3FFF
+
+		// On second write t is copied into v
+		ppu.v = ppu.t
 	}
 
-	// Mirror down the address if above 0x3FFF
-	// 0x3FFF = 0b00111111_11111111
-	// if int(get_addr(addr)) > 0x3FFF do set_addr(addr, get_addr(addr) & 0x3FFF)
-	if addr.t > 0x3FFF do addr.t &= 0x3FFF
-}
 
-increment_addr :: proc(addr: ^AddrRegister, inc: u8) {
-
-	// Increment the lower bits and if it carries then increment the higher bits by 1 
-	// lo := addr.value[1]
-	// addr.value[1] += inc
-	// if lo > addr.value[1] do addr.value[0] += 1
-
-	addr.t += u16(inc)
-
-	// Mirror down the address if above 0x3FFF
-	// 0x3FFF = 0b00111111_11111111
-	// if int(get_addr(addr)) > 0x3FFF do set_addr(addr, get_addr(addr) & 0x3FFF)
-	if addr.t > 0x3FFF do addr.t &= 0x3FFF
-}
-
-reset_latch :: proc(ppu: ^Ricoh2c02) {
-	ppu.w = true
-}
-
-write_to_addr :: proc(ppu: ^Ricoh2c02, value: u8) {
-	update_addr(&ppu.addr, ppu.w, value)
-	// if ppu.w {
-	// Zeroth 14th bit on first write
-	// value := value & 0b1011_1111
-	// ppu.t = u16(value) << 8 & (ppu.t & 0x00FF)
-	// } else {
-	// ppu.t = (ppu.t & 0xFF00) | u16(value)
-	// }
 	ppu.w = !ppu.w
 }
 
@@ -358,7 +306,8 @@ read_ppu_status :: proc(ppu: ^Ricoh2c02) -> u8 {
 	stat_u8: u8 = 0
 
 	// Reading status resets the w register.
-	if context.user_index == 0 do reset_latch(ppu)
+	// if context.user_index == 0 do reset_latch(ppu)
+	if context.user_index == 0 do ppu.w = false
 
 	if .SPRITE_OVERFLOW in ppu.status do stat_u8 |= u8(Status_Flags.SPRITE_OVERFLOW)
 	if .SPRITE_0_HIT in ppu.status do stat_u8 |= u8(Status_Flags.SPRITE_0_HIT)
@@ -388,7 +337,7 @@ ScrollRegister :: struct {
 @(private)
 write_to_scroll :: proc(ppu: ^Ricoh2c02, data: u8) {
 
-	if ppu.w {
+	if !ppu.w {
 		ppu.scroll.x_scroll = data
 	} else {
 		ppu.scroll.y_scroll = data
@@ -399,8 +348,7 @@ write_to_scroll :: proc(ppu: ^Ricoh2c02, data: u8) {
 
 @(private)
 read_ppu_data :: proc(ppu: ^Ricoh2c02) -> u8 {
-	// mem_addr := get_addr(&ppu.addr)
-	mem_addr := ppu.addr.t
+	mem_addr := ppu.v
 
 	// Because for debugging output we don't want to increment addr on read
 	if context.user_index == 0 do increment_vram_addr(ppu)
@@ -437,8 +385,8 @@ read_ppu_data :: proc(ppu: ^Ricoh2c02) -> u8 {
 
 @(private)
 write_to_ppu_data :: proc(ppu: ^Ricoh2c02, data: u8) {
-	// mem_addr := get_addr(&ppu.addr)
-	mem_addr := ppu.addr.t
+	mem_addr := ppu.v
+
 	increment_vram_addr(ppu)
 
 	switch mem_addr {
@@ -472,14 +420,14 @@ write_to_ppu_data :: proc(ppu: ^Ricoh2c02, data: u8) {
 }
 
 increment_vram_addr :: proc(ppu: ^Ricoh2c02) {
-	increment_addr(&ppu.addr, vram_addr_increment(&ppu.ctrl))
+	inc := vram_addr_increment(&ppu.ctrl)
 
-	// inc := vram_addr_increment(&ppu.ctrl)
-	// ppu.t += u16(inc)
+	ppu.v += u16(inc)
 
 	// Mirror down the address if above 0x3FFF
 	// 0x3FFF = 0b00111111_11111111
-	// if ppu.t > 0x3FFF do ppu.t &= 0x3FFF
+	if ppu.v > 0x3FFF do ppu.v &= 0x3FFF
+
 }
 
 // TODO: Mirroring
