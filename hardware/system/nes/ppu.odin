@@ -9,6 +9,18 @@ Mirroring :: enum {
 	FOUR_SCREEN,
 }
 
+PpuRegBf :: bit_field u16 {
+	coarse_x:  u8 | 5,
+	coarse_y:  u8 | 5,
+	nametable: u8 | 2,
+	fine_y:    u8 | 3,
+}
+
+PPUReg :: struct #raw_union {
+	using bits: PpuRegBf,
+	val:        u16,
+}
+
 Ricoh2c02 :: struct {
 	chr_rom:           []u8,
 	palette_table:     [32]u8,
@@ -23,7 +35,7 @@ Ricoh2c02 :: struct {
 	internal_data_buf: u8,
 	w:                 bool,
 	x:                 u8,
-	v, t:              u16,
+	v, t:              PPUReg,
 	scanline:          u16,
 	cycles:            int,
 	nmi_interrupt:     bool,
@@ -42,23 +54,19 @@ Ricoh2c02 :: struct {
 // 0x2009 - OAM DMA (write)
 // 0x4014 - OAM DMA
 
-// reset_latch :: proc(ppu: ^Ricoh2c02) {
-// ppu.w = false
-// }
-
 write_to_addr :: proc(ppu: ^Ricoh2c02, value: u8) {
 	if !ppu.w {
-		ppu.t = (ppu.t & 0x00FF) | (u16(value) << 8)
+		value := value & 0b1011_1111
+		ppu.t.val = (ppu.t.val & 0x00FF) | (u16(value) << 8)
 	} else {
-		ppu.t = (ppu.t & 0xFF00) | u16(value)
-		// Mirror down the address if above 0x3FFF
-		// 0x3FFF = 0b00111111_11111111
-		if ppu.t > 0x3FFF do ppu.t &= 0x3FFF
+		ppu.t.val = (ppu.t.val & 0xFF00) | u16(value)
 
 		// On second write t is copied into v
-		ppu.v = ppu.t
-	}
+		ppu.v.val = ppu.t.val
 
+		// Ensure v is only 14 bits
+		ppu.v.val &= 0x3FFF
+	}
 
 	ppu.w = !ppu.w
 }
@@ -348,7 +356,8 @@ write_to_scroll :: proc(ppu: ^Ricoh2c02, data: u8) {
 
 @(private)
 read_ppu_data :: proc(ppu: ^Ricoh2c02) -> u8 {
-	mem_addr := ppu.v
+	// mem_addr := ppu.v
+	mem_addr := ppu.v.val
 
 	// Because for debugging output we don't want to increment addr on read
 	if context.user_index == 0 do increment_vram_addr(ppu)
@@ -385,7 +394,8 @@ read_ppu_data :: proc(ppu: ^Ricoh2c02) -> u8 {
 
 @(private)
 write_to_ppu_data :: proc(ppu: ^Ricoh2c02, data: u8) {
-	mem_addr := ppu.v
+	// mem_addr := ppu.v
+	mem_addr := ppu.v.val
 
 	increment_vram_addr(ppu)
 
@@ -422,11 +432,11 @@ write_to_ppu_data :: proc(ppu: ^Ricoh2c02, data: u8) {
 increment_vram_addr :: proc(ppu: ^Ricoh2c02) {
 	inc := vram_addr_increment(&ppu.ctrl)
 
-	ppu.v += u16(inc)
+	ppu.v.val += u16(inc)
 
 	// Mirror down the address if above 0x3FFF
-	// 0x3FFF = 0b00111111_11111111
-	if ppu.v > 0x3FFF do ppu.v &= 0x3FFF
+	// since it the address is only 14 bits
+	if ppu.v.val > 0x3FFF do ppu.v.val &= 0x3FFF
 
 }
 
