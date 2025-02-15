@@ -10,10 +10,10 @@ Mirroring :: enum {
 }
 
 PpuRegBf :: bit_field u16 {
-	coarse_x:  u8 | 5,
-	coarse_y:  u8 | 5,
-	nametable: u8 | 2,
-	fine_y:    u8 | 3,
+	coarse_x:  u16 | 5,
+	coarse_y:  u16 | 5,
+	nametable: u16 | 2,
+	fine_y:    u16 | 3,
 }
 
 PPUReg :: struct #raw_union {
@@ -129,9 +129,12 @@ get_controller_bitset :: proc(data: u8) -> Controller_Bitset {
 write_to_ctrl :: proc(ppu: ^Ricoh2c02, value: u8) {
 	before_nmi_status := generate_vblank_nmi(ppu.ctrl)
 	ppu.ctrl = get_controller_bitset(value)
-	if !before_nmi_status && generate_vblank_nmi(ppu.ctrl) && is_in_vblank(ppu.status) {
+	// if !before_nmi_status && generate_vblank_nmi(ppu.ctrl) && is_in_vblank(ppu.status) {
+	if !before_nmi_status && generate_vblank_nmi(ppu.ctrl) && .VERTICAL_BLANK in ppu.status {
 		ppu.nmi_interrupt = true
 	}
+
+	ppu.t.bits.nametable = u16(value) & 0x3
 }
 
 poll_nmi_interrupt :: proc(ppu: ^Ricoh2c02) -> bool {
@@ -216,13 +219,13 @@ get_mask_bitset :: proc(data: u8) -> Mask_Bitset {
 	return bitset_tmp
 }
 
-show_sprites :: proc(ppu: ^Ricoh2c02) -> bool {
-	return .SHOW_SPRITES in ppu.mask
-}
+// show_sprites :: proc(ppu: ^Ricoh2c02) -> bool {
+// return .SHOW_SPRITES in ppu.mask
+// }
 
-show_background :: proc(ppu: ^Ricoh2c02) -> bool {
-	return .SHOW_BACKGROUND in ppu.mask
-}
+// show_background :: proc(ppu: ^Ricoh2c02) -> bool {
+// return .SHOW_BACKGROUND in ppu.mask
+// }
 
 @(private)
 write_to_mask :: proc(ppu: ^Ricoh2c02, data: u8) {
@@ -269,33 +272,33 @@ set_sprite_overflow :: proc(status: Status_Bitset, set: bool) -> Status_Bitset {
 }
 */
 
-set_sprite_overflow :: proc(ppu: ^Ricoh2c02, set: bool) {
-	if set {
-		ppu.status += {.SPRITE_OVERFLOW}
-	} else {
-		ppu.status -= {.SPRITE_OVERFLOW}
-	}
-}
+// set_sprite_overflow :: proc(ppu: ^Ricoh2c02, set: bool) {
+// if set {
+// ppu.status += {.SPRITE_OVERFLOW}
+// } else {
+// ppu.status -= {.SPRITE_OVERFLOW}
+// }
+// }
 
-set_sprite_0_hit :: proc(ppu: ^Ricoh2c02, set: bool) {
-	if set {
-		ppu.status += {.SPRITE_0_HIT}
-	} else {
-		ppu.status -= {.SPRITE_0_HIT}
-	}
-}
+// set_sprite_0_hit :: proc(ppu: ^Ricoh2c02, set: bool) {
+// if set {
+// ppu.status += {.SPRITE_0_HIT}
+// } else {
+// ppu.status -= {.SPRITE_0_HIT}
+// }
+// }
 
-set_vertical_blank :: proc(ppu: ^Ricoh2c02, set: bool) {
-	if set {
-		ppu.status += {.VERTICAL_BLANK}
-	} else {
-		ppu.status -= {.VERTICAL_BLANK}
-	}
-}
+// set_vertical_blank :: proc(ppu: ^Ricoh2c02, set: bool) {
+// if set {
+// ppu.status += {.VERTICAL_BLANK}
+// } else {
+// ppu.status -= {.VERTICAL_BLANK}
+// }
+// }
 
-is_in_vblank :: proc(status: Status_Bitset) -> bool {
-	return .VERTICAL_BLANK in status
-}
+// is_in_vblank :: proc(status: Status_Bitset) -> bool {
+// return .VERTICAL_BLANK in status
+// }
 
 get_status_bitset :: proc(data: u8) -> Status_Bitset {
 	bitset_tmp := Status_Bitset{}
@@ -321,21 +324,24 @@ read_ppu_status :: proc(ppu: ^Ricoh2c02) -> u8 {
 	if .SPRITE_0_HIT in ppu.status do stat_u8 |= u8(Status_Flags.SPRITE_0_HIT)
 	if .VERTICAL_BLANK in ppu.status do stat_u8 |= u8(Status_Flags.VERTICAL_BLANK)
 
+	// Reading status clears vertical blank
+	ppu.status -= {.VERTICAL_BLANK}
+
 	return stat_u8
 }
 
-write_oamaddr :: proc(ppu: ^Ricoh2c02, mem_addr: u8) {
-	ppu.oam_addr = mem_addr
-}
+// write_oamaddr :: proc(ppu: ^Ricoh2c02, mem_addr: u8) {
+// ppu.oam_addr = mem_addr
+// }
 
-read_oamdata :: proc(ppu: ^Ricoh2c02) -> u8 {
-	return ppu.oam_data[ppu.oam_addr]
-}
+// read_oamdata :: proc(ppu: ^Ricoh2c02) -> u8 {
+// return ppu.oam_data[ppu.oam_addr]
+// }
 
-write_oamdata :: proc(ppu: ^Ricoh2c02, data: u8) {
-	ppu.oam_data[ppu.oam_addr] = data
-	ppu.oam_addr += 1
-}
+// write_oamdata :: proc(ppu: ^Ricoh2c02, data: u8) {
+// ppu.oam_data[ppu.oam_addr] = data
+// ppu.oam_addr += 1
+// }
 
 ScrollRegister :: struct {
 	x_scroll: u8,
@@ -347,8 +353,14 @@ write_to_scroll :: proc(ppu: ^Ricoh2c02, data: u8) {
 
 	if !ppu.w {
 		ppu.scroll.x_scroll = data
+		ppu.t.bits.coarse_x = u16(data) >> 3
+		ppu.x = (data & 0x7)
 	} else {
 		ppu.scroll.y_scroll = data
+		ppu.t.bits.coarse_y = u16(data) >> 3
+		// ppu.t.bits.fine_y = (u16(data) & 0x7)
+		ppu.t.fine_y = (u16(data) & 0x7)
+
 	}
 
 	ppu.w = !ppu.w
@@ -463,23 +475,56 @@ mirror_vram_addr :: proc(mem_addr: u16, mirroring: Mirroring) -> u16 {
 	return mem_addr_out
 }
 
-tick_ppu :: proc(ppu: ^Ricoh2c02, ncycles: int) -> bool {
-	ppu.cycles += ncycles
+// Code to tick once so that we can guarantee we hit every cycle in a scanline
+tick_once :: proc(ppu: ^Ricoh2c02) -> bool {
+	ppu.cycles += 1
 	if ppu.cycles >= 341 {
+		if is_sprite_0_hit(ppu, ppu.cycles) do ppu.status += {.SPRITE_0_HIT}
+
 		ppu.cycles -= 341
 		ppu.scanline += 1
 
 		if ppu.scanline == 241 {
-			set_vertical_blank(ppu, true)
-			set_sprite_0_hit(ppu, false)
+			ppu.status += {.VERTICAL_BLANK}
+			ppu.status -= {.SPRITE_0_HIT}
 			if generate_vblank_nmi(ppu.ctrl) do ppu.nmi_interrupt = true
 		}
 
 		if ppu.scanline >= 262 {
 			ppu.scanline = 0
 			ppu.nmi_interrupt = false
-			set_sprite_0_hit(ppu, false)
-			set_vertical_blank(ppu, false)
+			ppu.status -= {.SPRITE_0_HIT}
+			ppu.status -= {.VERTICAL_BLANK}
+			return true
+		}
+	}
+	return false
+}
+
+tick_ppu :: proc(ppu: ^Ricoh2c02, ncycles: int) -> bool {
+	ppu.cycles += ncycles
+	if ppu.cycles >= 341 {
+		// if is_sprite_0_hit(ppu, ppu.cycles) do set_sprite_0_hit(ppu, true)
+		if is_sprite_0_hit(ppu, ppu.cycles) do ppu.status += {.SPRITE_0_HIT}
+
+		ppu.cycles -= 341
+		ppu.scanline += 1
+
+		if ppu.scanline == 241 {
+			// set_vertical_blank(ppu, true)
+			ppu.status += {.VERTICAL_BLANK}
+			// set_sprite_0_hit(ppu, false)
+			ppu.status -= {.SPRITE_0_HIT}
+			if generate_vblank_nmi(ppu.ctrl) do ppu.nmi_interrupt = true
+		}
+
+		if ppu.scanline >= 262 {
+			ppu.scanline = 0
+			ppu.nmi_interrupt = false
+			// set_sprite_0_hit(ppu, false)
+			ppu.status -= {.SPRITE_0_HIT}
+			// set_vertical_blank(ppu, false)
+			ppu.status -= {.VERTICAL_BLANK}
 			return true
 		}
 	}
@@ -490,7 +535,8 @@ is_sprite_0_hit :: proc(ppu: ^Ricoh2c02, cycle: int) -> bool {
 	y := u16(ppu.oam_data[0])
 	x := int(ppu.oam_data[3])
 
-	return y == ppu.scanline && x <= cycle && show_sprites(ppu)
+	// return y == ppu.scanline && x <= cycle && show_sprites(ppu)
+	return y == ppu.scanline && x <= cycle && .SHOW_SPRITES in ppu.mask
 }
 
 write_ppu_register :: proc(ppu: ^Ricoh2c02, addr: u16, data: u8) {
@@ -502,9 +548,12 @@ write_ppu_register :: proc(ppu: ^Ricoh2c02, addr: u16, data: u8) {
 	case 0x2002:
 		log.panic("Attempting to write to status which is read only")
 	case 0x2003:
-		write_oamaddr(ppu, data)
+		// write_oamaddr(ppu, data)
+		ppu.oam_addr = data
 	case 0x2004:
-		write_oamdata(ppu, data)
+		// write_oamdata(ppu, data)
+		ppu.oam_data[ppu.oam_addr] = data
+		ppu.oam_addr += 1
 	case 0x2005:
 		write_to_scroll(ppu, data)
 	case 0x2006:
@@ -533,7 +582,8 @@ read_ppu_register :: proc(ppu: ^Ricoh2c02, addr: u16) -> u8 {
 	case 0x2002:
 		mem_val = read_ppu_status(ppu)
 	case 0x2004:
-		mem_val = read_oamdata(ppu)
+		// mem_val = read_oamdata(ppu)
+		mem_val = ppu.oam_data[ppu.oam_addr]
 	case 0x2007:
 		mem_val = read_ppu_data(ppu)
 	case 0x2008 ..= PPU_REGISTERS_MIRRORS_END:

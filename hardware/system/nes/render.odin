@@ -237,7 +237,7 @@ set_frame_pixel :: proc(frame: ^Frame, x: int, y: int, color: rgb) {
 /*
 // A tile is 16 bytes = 8*8*2 bits (4 possible colors = 2 bits). Each row is encoded using 2 bytes
 // that are 8 bytes away from each other. I.E. the color index for the first row is encoded in 0x0000
-// and 0x0008 in thw tile. Each bit in the byte corresponds to the same column.
+// and 0x0008 in the tile. Each bit in the byte corresponds to the same column.
 show_tile :: proc(frame: ^Frame, x_off: int, y_off: int, chr_rom: []u8, bank: int, tile_n: int) {
 
 	bank := bank * 0x1000
@@ -348,10 +348,13 @@ render_frame :: proc(frame: ^Frame, scaling: i32) {
 render_background :: proc(ppu: ^Ricoh2c02, frame: ^Frame) {
 	scroll_x := int(ppu.scroll.x_scroll)
 	scroll_y := int(ppu.scroll.y_scroll)
+	// scroll_x2 := int((ppu.v.coarse_x << 3) | ppu.x)
+	// scroll_y2 := int((ppu.v.coarse_y << 3) | ppu.v.bits.fine_y)
 
+	// fmt.println(scroll_x, scroll_x2, scroll_y, scroll_y2)
 	main_nametable: []u8
 	second_nametable: []u8
-	ppu.mirroring = .HORIZONTAL
+	// ppu.mirroring = .HORIZONTAL
 	switch ppu.mirroring {
 	case .HORIZONTAL:
 		switch get_nametable_addr(ppu.ctrl) {
