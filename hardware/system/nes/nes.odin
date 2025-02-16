@@ -55,27 +55,6 @@ bus_mem_read :: proc(bus: ^mos6502.Bus, addr: u16) -> u8 {
 		mem_val = bus.cpu_vram[mirror_down_addr]
 	case PPU_REGISTERS ..= PPU_REGISTERS_MIRRORS_END:
 		mem_val = read_ppu_register(&bus.ppu, addr)
-	/*
-	case 0x2000, 0x2001, 0x2003, 0x2005, 0x2006:
-		when ODIN_DEBUG {
-			mem_val = 0 // because I might be disassembling instruction
-		} else {
-			log.warn("Attempt to read from write-only PPU address:", addr)
-			fmt.printf("%04X\n", addr)
-		}
-	case 0x2002:
-		mem_val = read_ppu_status(&bus.ppu)
-	case 0x2004:
-		mem_val = read_oamdata(&bus.ppu)
-	case 0x2007:
-		mem_val = read_ppu_data(&bus.ppu)
-	case 0x2008 ..= PPU_REGISTERS_MIRRORS_END:
-		// Calculate what address this address mirrors and then
-		// read from that address instead
-		mirror_down_addr := addr & 0b00100000_00000111
-		// fmt.printf("Reading %04X %04x\n", addr, mirror_down_addr)
-		mem_val = bus_mem_read(bus, mirror_down_addr)
-	*/
 	case 0x4016:
 		mem_val = read_joypad(&bus.jp1)
 	case 0x4017:
@@ -110,33 +89,8 @@ bus_mem_write :: proc(bus: ^mos6502.Bus, addr: u16, data: u8) {
 	// Start of the PPU registers
 	case PPU_REGISTERS ..= PPU_REGISTERS_MIRRORS_END:
 		write_ppu_register(&bus.ppu, addr, data)
-	/*
-	case 0x2000:
-		write_to_ctrl(&bus.ppu, data)
-	case 0x2001:
-		write_to_mask(&bus.ppu, data)
-	case 0x2002:
-		log.panic("Attempting to write to status which is read only")
-	case 0x2003:
-		write_oamaddr(&bus.ppu, data)
-	case 0x2004:
-		write_oamdata(&bus.ppu, data)
-	case 0x2005:
-		write_to_scroll(&bus.ppu, data)
-	case 0x2006:
-		write_to_addr(&bus.ppu, data)
-	case 0x2007:
-		write_to_ppu_data(&bus.ppu, data)
-	case 0x2008 ..= PPU_REGISTERS_MIRRORS_END:
-		// Calculate what address this address mirrors and write
-		// to that address
-		mirror_down_addr := addr & 0b00100000_00000111
-		// fmt.printf("Writing %04X %04x\n", addr, mirror_down_addr)
-		bus_mem_write(bus, mirror_down_addr, data)
-	*/
 	case 0x4014:
 		ppu_oam_dma(bus, data)
-	// case 0x4000 ..= 0x4015:
 	case APU_REGISTERS ..= APU_REGISTERS_END:
 		write_apu_register(&bus.apu, addr, data)
 	case 0x4016:
@@ -264,15 +218,17 @@ tick :: proc(bus: ^Bus, ncycles: int) {
 	// 3 times the number of cycles as the previous CPU instruction
 
 	nmi_before := bus.ppu.nmi_interrupt
-	tick_ppu(&bus.ppu, 3 * ncycles)
+	// tick_ppu(&bus.ppu, 3 * ncycles)
+	for i in 0 ..< 3 * ncycles {
+		tick_once(&bus.ppu)
+	}
 	nmi_after := bus.ppu.nmi_interrupt
 
 	if !nmi_before && nmi_after {
-
-		render_background(&bus.ppu, &bus.ppu.frame)
-		render_sprites(&bus.ppu, &bus.ppu.frame)
-		// render_frame(&frame, &bus.ri)
-		render_frame_texture(&bus.ppu.frame, &bus.ri)
+		// render_background(&bus.ppu, &bus.ppu.frame)
+		// render_sprites(&bus.ppu, &bus.ppu.frame)
+		// render_frame_texture(&bus.ppu.frame, &bus.ri)
+		render_image(bus.ppu.image[:], &bus.ri)
 	}
 }
 
@@ -302,7 +258,6 @@ run :: proc(nes: ^NES) {
 		// Check for NMI before executing each instruction
 		if poll_nmi_status(&nes.bus) do interrupt_nmi(&nes.cpu6502, &nes.bus)
 
-
 		when ODIN_DEBUG {
 			mos6502.disassemble6502p_ver2(&nes.cpu6502, &nes.bus)
 			mos6502.display_registers(&nes.cpu6502)
@@ -312,8 +267,12 @@ run :: proc(nes: ^NES) {
 			mos6502.display_cycles(&nes.cpu6502, nes.bus.ncycles)
 			fmt.printf("\n")
 		}
+
 		// Execute next instruction and determine how long it took
 		num_cycles := mos6502.emulate6502p(&nes.cpu6502, &nes.bus)
+
+		// Tick the APU and PPU by a number of cycles based off the number of cycles
+		// of the CPU
 		tick(&nes.bus, num_cycles)
 
 		// Do some calculation based on the time to execute the instruction and time it would
@@ -324,27 +283,6 @@ run :: proc(nes: ^NES) {
 		// time.accurate_sleep(4000) // nanoseconds
 		time.accurate_sleep(auto_cast time_to_sleep)
 		calc_duration(&sw) // need to reset stopwatch after sleep
-
-		/*
-		if (nes.bus.ncycles % 1600000) > 1000 do tmp1 = true
-		if (nes.bus.ncycles % 1600000) < 100 {
-			if tmp1 {
-				time.stopwatch_stop(&sw)
-				duration := time.stopwatch_duration(sw)
-				dur_milli := time.duration_seconds(duration)
-				fmt.println("DURATION:", nes.bus.ncycles, dur_milli, count, dur1, dur2, dur3, dur4)
-				time.stopwatch_reset(&sw)
-				time.stopwatch_start(&sw)
-				tmp1 = false
-				count = 0
-				dur1 = 0
-				dur2 = 0
-				dur3 = 0
-				dur4 = 0
-			}
-		}
-		*/
-
 	}
 }
 
@@ -352,6 +290,8 @@ interrupt_nmi :: proc(state: ^mos6502.MOS6502, bus: ^Bus) {
 	// Implement the non-maskable interrupt
 	// Push the current PC and status on the stack
 	// and then jump to the location stored at 0xFFFA-0xFFFB
+
+	fmt.printf("NMI PC: %04x\n", u16(state.pc))
 	high, low := mos6502.getHighLow(u16(state.pc))
 	mos6502.pushR(high, low, state, bus)
 	flags := state.status
@@ -368,5 +308,8 @@ interrupt_nmi :: proc(state: ^mos6502.MOS6502, bus: ^Bus) {
 	high_nmi := bus.read(bus, 0xFFFB)
 
 	nmi_pc := (u16(high_nmi) << 8) | u16(low_nmi)
+
+	fmt.printf("NMI: %04x\n", nmi_pc)
+
 	state.pc = auto_cast nmi_pc
 }

@@ -19,8 +19,6 @@ update_mi :: proc(mi: ^MapperInfo, addr: u16, data: u8) {
 		update_mapper_0()
 	case 2:
 		update_mapper_2(mi, data)
-	// delete(bus.prg_rom)
-	// bus.prg_rom = mapper.mapper2(bus.rom.prg_rom, data)
 	case:
 		log.fatal("Unimplemented mapper:", mi.num)
 	}

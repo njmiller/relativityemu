@@ -5,8 +5,6 @@ import "core:fmt"
 import "core:log"
 import "core:math/bits"
 
-// import "hardware:memory"
-
 // TODO: Maybe move bus definition here instead of in a separate file as the bus is how the
 // CPU interacts with the rest of the system and any system could still extend that structure
 // like I am doing now
@@ -774,6 +772,8 @@ inc :: proc(state: ^MOS6502, register: ^u8, bus: ^Bus, add_mode: AddressingMode)
 jump :: proc(state: ^MOS6502, bus: ^Bus, add_mode: AddressingMode, sub: bool) {
 	value := getOffset(state, bus, add_mode)
 
+	fmt.printf("JUMP: %04x %04x\n", state.pc, value)
+
 	// If jump to subroutine, push the address (minus one) of the return point on the stack
 	// TODO: Says it pushes address-1 of the next operation
 	if sub {
@@ -826,6 +826,7 @@ rti :: proc(state: ^MOS6502, bus: ^Bus) {
 	high, low: u8
 	popR(&high, &low, state, bus)
 
+	fmt.printf("RTI: %04x\n", getCombined(high, low))
 	state.pc = auto_cast getCombined(high, low)
 	//state.pc = auto_cast pop(state, bus)
 }
@@ -1117,6 +1118,7 @@ undo_read :: proc(state: ^MOS6502, add_mode: AddressingMode) {
 }
 
 emulate6502p :: proc(state: ^MOS6502, bus: ^Bus) -> int {
+
 	opcode: OpCode = auto_cast readImmediate8(state, bus)
 
 	//Page boundary

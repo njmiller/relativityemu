@@ -211,6 +211,7 @@ SYSTEM_PALETTE: [64]rgb = {
 	{0, 0, 0},
 	{0, 0, 0},
 }
+
 // Hard code in the NES resolution
 FRAME_WIDTH :: 256
 FRAME_HEIGHT :: 240
@@ -220,6 +221,50 @@ Frame :: struct {
 	data2: [FRAME_HEIGHT * FRAME_WIDTH * 3]u8,
 	// data:  []rgb,
 	// data2: []u8,
+}
+
+render_image :: proc(colors: []u8, ri: ^RenderInfo) {
+	renderer := ri.renderer
+	texture := ri.texture
+
+	sdl2.RenderClear(renderer)
+
+	pitch: i32 = FRAME_WIDTH * 3
+	// pixels: []u8
+
+	npix :: FRAME_HEIGHT * FRAME_WIDTH * 3
+	pixels := make([]u8, npix)
+	// defer delete(pixels)
+
+	succt := sdl2.LockTexture(texture, nil, auto_cast &pixels, &pitch)
+
+	// copy frame.data to pixels
+	// copy(pixels, frame.data2[:])
+
+	// idx0 := FRAME_WIDTH * 90
+	// idx1 := FRAME_WIDTH * 91
+	// fmt.println("TEST:", colors[idx0:idx1])
+	for i in 0 ..< FRAME_HEIGHT {
+		for j in 0 ..< FRAME_WIDTH {
+			idx_orig := FRAME_WIDTH * i + j
+			idx_dest := 3 * idx_orig
+			idx_palette := colors[idx_orig]
+			// if i == 180 || j == 50 || j == 129 do idx_palette = 0
+			// idx_palette := i % 64
+			rgb_val := SYSTEM_PALETTE[idx_palette]
+			pixels[idx_dest] = rgb_val[0]
+			pixels[idx_dest + 1] = rgb_val[1]
+			pixels[idx_dest + 2] = rgb_val[2]
+		}
+	}
+
+	sdl2.UnlockTexture(texture)
+
+	rect := sdl2.Rect{0, 0, FRAME_WIDTH, FRAME_HEIGHT}
+
+	succc := sdl2.RenderCopy(renderer, texture, nil, &rect)
+
+	sdl2.RenderPresent(renderer)
 }
 
 // Set the color in one pixel in the frame
@@ -233,45 +278,6 @@ set_frame_pixel :: proc(frame: ^Frame, x: int, y: int, color: rgb) {
 		frame.data2[idx + 2] = color[2]
 	}
 }
-
-/*
-// A tile is 16 bytes = 8*8*2 bits (4 possible colors = 2 bits). Each row is encoded using 2 bytes
-// that are 8 bytes away from each other. I.E. the color index for the first row is encoded in 0x0000
-// and 0x0008 in the tile. Each bit in the byte corresponds to the same column.
-show_tile :: proc(frame: ^Frame, x_off: int, y_off: int, chr_rom: []u8, bank: int, tile_n: int) {
-
-	bank := bank * 0x1000
-
-	idx := bank + tile_n * 16
-	tile := chr_rom[idx:idx + 16]
-
-	for y in 0 ..< 8 {
-		upper := tile[y]
-		lower := tile[y + 8]
-
-		color: rl.Color
-		for x := 7; x >= 0; x -= 1 {
-			value := (1 & upper) << 1 | (1 & lower)
-			upper = upper >> 1
-			lower = lower >> 1
-			// These are currently random colors
-			switch value {
-			case 0:
-				color = SYSTEM_PALETTE[0x01]
-			case 1:
-				color = SYSTEM_PALETTE[0x23]
-			case 2:
-				color = SYSTEM_PALETTE[0x27]
-			case 3:
-				color = SYSTEM_PALETTE[0x30]
-			case:
-				log.panic("Can't be")
-			}
-			set_frame_pixel(frame, x + x_off, y + y_off, color)
-		}
-	}
-}
-*/
 
 render_frame_texture :: proc(frame: ^Frame, ri: ^RenderInfo) {
 	renderer := ri.renderer
@@ -323,35 +329,10 @@ render_frame :: proc(frame: ^Frame, ri: ^RenderInfo) {
 	sdl2.RenderPresent(renderer)
 }
 
-/*
-render_frame :: proc(frame: ^Frame, scaling: i32) {
-
-	rl.BeginDrawing()
-	rl.ClearBackground(rl.GREEN)
-
-	for x in 0 ..< FRAME_WIDTH {
-		for y in 0 ..< FRAME_HEIGHT {
-			pix_x: i32 = auto_cast x
-			pix_y: i32 = auto_cast y
-			off := y * FRAME_WIDTH + x
-			color := frame.data[off]
-			raylib_color = rl.Color{color[0], color[1], color[2], 255}
-			rl.DrawRectangle(pix_x * scaling, pix_y * scaling, scaling, scaling, raylib_color)
-			// rl.DrawPixel(pix_x, pix_y, color)
-		}
-	}
-
-	rl.EndDrawing()
-}
-*/
-
 render_background :: proc(ppu: ^Ricoh2c02, frame: ^Frame) {
 	scroll_x := int(ppu.scroll.x_scroll)
 	scroll_y := int(ppu.scroll.y_scroll)
-	// scroll_x2 := int((ppu.v.coarse_x << 3) | ppu.x)
-	// scroll_y2 := int((ppu.v.coarse_y << 3) | ppu.v.bits.fine_y)
 
-	// fmt.println(scroll_x, scroll_x2, scroll_y, scroll_y2)
 	main_nametable: []u8
 	second_nametable: []u8
 	// ppu.mirroring = .HORIZONTAL
@@ -436,6 +417,17 @@ render_name_table :: proc(
 				   pixel_y >= view_port.y1 &&
 				   pixel_y < view_port.y2 {
 					set_frame_pixel(frame, shift_x + pixel_x, shift_y + pixel_y, color)
+					// if pixel_y == 90 && pixel_x % 8 == 0 && pixel_x > 100 && pixel_x < 150 {
+					// fmt.println(pixel_y, pixel_x, tile_num)
+					// fmt.printf("PPP: %04x\n", i)
+					// mem_addr: u16 = 0x216E
+					// tmp := read_ppu_data(ppu, mem_addr)
+					// fmt.printf("ERT %04d\n", tmp)
+					// tmp2 := mirror_vram_addr(mem_addr, ppu.mirroring)
+					// fmt.println("MIRROR AAA", mem_addr, tmp2)
+					// result := ppu.vram[tmp2]
+					// fmt.println("RES: ", result)
+					// }
 				}
 			}
 		}
