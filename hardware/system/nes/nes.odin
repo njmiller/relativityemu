@@ -9,7 +9,7 @@ import "vendor:sdl2"
 import "hardware:cpu/mos6502"
 
 
-CLOCK_SPEED: u64 : 1789
+CLOCK_SPEED: u64 : 1789 // KHz
 
 RenderInfo :: struct {
 	renderer: ^sdl2.Renderer,
@@ -222,6 +222,13 @@ tick :: proc(bus: ^Bus, ncycles: int) {
 	for i in 0 ..< 3 * ncycles {
 		tick_once(&bus.ppu)
 	}
+	// for i in 0 ..< ncycles {
+	// tick_once(&bus.ppu)
+	// tick_once(&bus.ppu)
+	// tick_once(&bus.ppu)
+	// tick_apu(&bus.apu)
+	// }
+
 	nmi_after := bus.ppu.nmi_interrupt
 
 	if !nmi_before && nmi_after {

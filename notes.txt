@@ -1,2 +1,0 @@
-DCP on 00 results in zero being set and negative being unset (from previous settings both are changed)
-DCP on EB results in neither zero nor negative being set

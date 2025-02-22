@@ -2,28 +2,94 @@ package nes
 
 // import "vendor:sdl3"
 
+AUDIO_SAMPLE_RATE :: 44100 // 44.1 KHz
+
+TICKS_PER_SAMPLE :: 1
+
 // NES APU Implementation
 APU :: struct {
-	pulse1:   PulseChannel,
-	pulse2:   PulseChannel,
-	triangle: TriangleChannel,
-	noise:    NoiseChannel,
-	dmc:      DMCChannel,
+	pulse1:         PulseChannel,
+	pulse2:         PulseChannel,
+	triangle:       TriangleChannel,
+	noise:          NoiseChannel,
+	dmc:            DMCChannel,
+	clock_all:      bool,
+	sample_counter: f32,
+}
+
+LengthCounter :: struct {
+	val:  u8,
+	halt: bool,
+}
+
+LinearCounter :: struct {
+	control: bool,
+	val:     u8,
 }
 
 // Pulse Channel struct and functions
 PulseChannel :: struct {
-	duty:                u8,
-	length_counter:      u8,
-	envelope_volume:     u8,
-	frequency:           u16,
-	enabled:             bool,
-	length_counter_halt: bool,
-	constant_volume:     bool,
-	envelope_start:      bool,
-	volume:              u8,
-	timer:               u16,
-	duty_position:       u8,
+	duty:            u8,
+	// length_counter:      u8,
+	envelope_volume: u8,
+	frequency:       u16,
+	enabled:         bool,
+	// length_counter_halt: bool,
+	constant_volume: bool,
+	envelope_start:  bool,
+	volume:          u8,
+	timer:           u16,
+	duty_position:   u8,
+	length_counter:  LengthCounter,
+}
+
+// Triangle Channel
+TriangleChannel :: struct {
+	frequency:         u16,
+	enabled:           bool,
+	// length_counter:      u8,
+	length_counter:    LengthCounter,
+	// linear_counter:         u8,
+	// linear_counter_control: bool,
+	// linear_counter_load:    u8,
+	linear_counter:    LinearCounter,
+	timer:             u16,
+	sequence_position: u8,
+}
+
+NoiseChannel :: struct {
+	period:         u16,
+	enabled:        bool,
+	// length_counter: u8,
+	length_counter: LengthCounter,
+	volume:         u8,
+	mode:           bool,
+	shift_register: u16,
+	timer:          u16,
+}
+
+DMCChannel :: struct {
+	sample_address: u16,
+	sample_length:  u16,
+	current_sample: u8,
+	enabled:        bool,
+	period:         u16,
+	timer:          u16,
+	output_level:   u8,
+}
+
+//odinfmt: disable
+lc_table : [32]u8 = {10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14,
+					 12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30}
+
+//odinfmt: enable
+
+clock_linear_counter :: proc(lc: ^LinearCounter) {
+	if lc.val > 0 do lc.val -= 1
+}
+
+clock_length_counter :: proc(lc: ^LengthCounter) {
+	if lc.val > 0 do lc.val -= 1
 }
 
 clock_pulse :: proc(pulse_channel: ^PulseChannel) {
@@ -36,7 +102,7 @@ clock_pulse :: proc(pulse_channel: ^PulseChannel) {
 }
 
 output_pulse :: proc(pulse: ^PulseChannel) -> u8 {
-	if !pulse.enabled || pulse.length_counter == 0 do return 0
+	if !pulse.enabled || pulse.length_counter.val == 0 do return 0
 
 	// duty_table := matrix[4, 8]u8{
     //odinfmt: disable
@@ -54,30 +120,20 @@ output_pulse :: proc(pulse: ^PulseChannel) -> u8 {
 
 }
 
-// Triangle Channel
-TriangleChannel :: struct {
-	frequency:           u16,
-	enabled:             bool,
-	length_counter:      u8,
-	linear_counter:      u8,
-	linear_counter_halt: bool,
-	timer:               u16,
-	sequence_position:   u8,
-}
 
 clock_triangle :: proc(tri: ^TriangleChannel) {
 	if tri.timer > 0 {
 		tri.timer -= 1
 	} else {
 		tri.timer = tri.frequency
-		if tri.enabled && tri.length_counter > 0 && tri.linear_counter > 0 {
+		if tri.enabled && tri.length_counter.val > 0 && tri.linear_counter.val > 0 {
 			tri.sequence_position = (tri.sequence_position + 1) & 0x1F
 		}
 	}
 }
 
 output_triangle :: proc(tri: ^TriangleChannel) -> u8 {
-	if !tri.enabled || tri.length_counter == 0 do return 0
+	if !tri.enabled || tri.length_counter.val == 0 do return 0
 	
     //odinfmt: disable
 	triangle_table := [32]u8 {
@@ -89,15 +145,6 @@ output_triangle :: proc(tri: ^TriangleChannel) -> u8 {
 	return triangle_table[tri.sequence_position]
 }
 
-NoiseChannel :: struct {
-	period:         u16,
-	enabled:        bool,
-	length_counter: u8,
-	volume:         u8,
-	mode:           bool,
-	shift_register: u16,
-	timer:          u16,
-}
 
 clock_noise :: proc(noise: ^NoiseChannel) {
 	if noise.timer > 0 {
@@ -111,19 +158,10 @@ clock_noise :: proc(noise: ^NoiseChannel) {
 }
 
 output_noise :: proc(noise: ^NoiseChannel) -> u8 {
-	if !noise.enabled || noise.length_counter == 0 do return 0
+	if !noise.enabled || noise.length_counter.val == 0 do return 0
 	return u8(noise.shift_register & 0x1) * noise.volume
 }
 
-DMCChannel :: struct {
-	sample_address: u16,
-	sample_length:  u16,
-	current_sample: u8,
-	enabled:        bool,
-	period:         u16,
-	timer:          u16,
-	output_level:   u8,
-}
 
 clock_dmc :: proc(dmc: ^DMCChannel) {
 	if dmc.timer > 0 {
@@ -149,8 +187,7 @@ write_apu_register :: proc(apu: ^APU, addr: u16, value: u8) {
 	case 0x4000:
 		apu.pulse1.duty = (value >> 6) & 0x3
 		// apu.pulse1.length_counter_halt = (value >> 5) & 0x1 != 0
-		apu.pulse2.length_counter_halt = value & 0b0010_0000 != 0
-		// apu.pulse1.constant_volume = (value >> 4) & 0x1 != 0
+		apu.pulse2.length_counter.halt = value & 0b0010_0000 != 0
 		apu.pulse1.constant_volume = value & 0b0001_0000 != 0
 		apu.pulse1.volume = value & 0xF
 	case 0x4001:
@@ -164,12 +201,12 @@ write_apu_register :: proc(apu: ^APU, addr: u16, value: u8) {
 		apu.pulse1.frequency = apu.pulse1.frequency & 0x700 | u16(value)
 	case 0x4003:
 		apu.pulse1.frequency = (apu.pulse1.frequency & 0xFF) | ((u16(value) & 0x7) << 8)
-		apu.pulse1.length_counter = value >> 3
+		apu.pulse1.length_counter.val = value >> 3
 		apu.pulse1.envelope_start = true
 	case 0x4004:
 		apu.pulse2.duty = (value >> 6) & 0x3
 		// apu.pulse2.length_counter_halt = (value >> 5) & 0x1 != 0
-		apu.pulse2.length_counter_halt = value & 0b0010_0000 != 0
+		apu.pulse2.length_counter.halt = value & 0b0010_0000 != 0
 		// apu.pulse2.constant_volume = (value >> 4) & 0x1 != 0
 		apu.pulse2.constant_volume = value & 0b0001_0000 != 0
 		apu.pulse2.volume = value & 0xF
@@ -183,16 +220,18 @@ write_apu_register :: proc(apu: ^APU, addr: u16, value: u8) {
 		apu.pulse2.frequency = (apu.pulse1.frequency & 0x700) | u16(value)
 	case 0x4007:
 		apu.pulse2.frequency = (apu.pulse1.frequency & 0xFF) | ((u16(value) & 0x7) << 8)
-		apu.pulse2.length_counter = value >> 3
+		apu.pulse2.length_counter.val = value >> 3
 		apu.pulse2.envelope_start = true
 	case 0x4008:
-		apu.triangle.linear_counter_halt = value >> 7 != 0
+		apu.triangle.linear_counter.control = value >> 7 != 0
+		apu.triangle.length_counter.halt = value >> 7 != 0
+		apu.triangle.linear_counter.val = value & 0b0111_1111
 	case 0x4009: // unused
 	case 0x400A:
 		apu.triangle.frequency = apu.triangle.frequency & 0x700 | u16(value)
 	case 0x400B:
 		apu.triangle.frequency = (apu.triangle.frequency & 0xFF) | ((u16(value) & 0x7) << 8)
-		apu.triangle.length_counter = value >> 3
+		apu.triangle.length_counter.val = value >> 3
 	case 0x400C:
 		apu.noise.volume = value & 0xF
 	// apu.noise.length_counter_halt = (value >> 5) & 0x1 != 0
@@ -213,8 +252,8 @@ write_apu_register :: proc(apu: ^APU, addr: u16, value: u8) {
 	case 0x4013:
 		apu.dmc.sample_length = u16(value)
 	case 0x4015:
-		apu.pulse1.length_counter_halt = (value & 0b0000_0001) != 0
-		apu.pulse2.length_counter_halt = (value & 0b0000_0010) != 0
+		apu.pulse1.length_counter.halt = (value & 0b0000_0001) != 0
+		apu.pulse2.length_counter.halt = (value & 0b0000_0010) != 0
 	// apu.triangle.length_counter_halt = value & 0b0000_0100 != 0
 	// apu.noise.length_counter_halt = value & 0b0000_1000 != 0
 	// apu.dmc.interrupt = false
@@ -226,10 +265,10 @@ read_apu_register :: proc(apu: ^APU, addr: u16) -> u8 {
 
 	res: u8 = 0
 	if addr == 0x4015 {
-		if apu.pulse1.length_counter > 0 do res |= 0b0000_0001
-		if apu.pulse2.length_counter > 0 do res |= 0b0000_0010
-		if apu.triangle.length_counter > 0 do res |= 0b0000_0100
-		if apu.noise.length_counter > 0 do res |= 0b0000_1000
+		if apu.pulse1.length_counter.val > 0 do res |= 0b0000_0001
+		if apu.pulse2.length_counter.val > 0 do res |= 0b0000_0010
+		if apu.triangle.length_counter.val > 0 do res |= 0b0000_0100
+		if apu.noise.length_counter.val > 0 do res |= 0b0000_1000
 		if apu.dmc.enabled do res |= 0b0001_0000
 	}
 	return res
@@ -237,7 +276,13 @@ read_apu_register :: proc(apu: ^APU, addr: u16) -> u8 {
 
 clock_frame_counter :: proc(apu: ^APU) {
 	// Clock length counters and envelope shifts
-	if apu.pulse1.length_counter > 0 && !apu.pulse1.length_counter_halt do apu.pulse1.length_counter -= 1
+	clock_length_counter(&apu.pulse1.length_counter)
+	clock_length_counter(&apu.pulse2.length_counter)
+	clock_length_counter(&apu.triangle.length_counter)
+	clock_length_counter(&apu.noise.length_counter)
+
+	// if apu.pulse1.length_counter.val > 0 && !apu.pulse1.length_counter.halt do apu.pulse1.length_counter.val -= 1
+
 	// Similar for other channels
 
 
@@ -251,7 +296,7 @@ clock :: proc(apu: ^APU) {
 	clock_dmc(&apu.dmc)
 }
 
-output_apu :: proc(apu: ^APU) -> u16 {
+get_sample :: proc(apu: ^APU) -> u16 {
 	// Linear approximation. Could also try lookup table
 	pulse_out := 0.00752 * f32(output_pulse(&apu.pulse1) + output_pulse(&apu.pulse2))
 	tnd_out := 0.00851 * f32(output_triangle(&apu.triangle))
@@ -259,4 +304,23 @@ output_apu :: proc(apu: ^APU) -> u16 {
 	tnd_out += 0.00335 * f32(output_dmc(&apu.dmc))
 
 	return u16((pulse_out + tnd_out) * 32767)
+}
+
+tick_apu :: proc(apu: ^APU) {
+	apu.clock_all = ~apu.clock_all
+
+	// Triangle is clocked every CPU cycle
+	clock_triangle(&apu.triangle)
+
+	// Everything else is clocked every other CPU cycle
+	if apu.clock_all {
+
+	}
+
+	// CPU runs at 1.789 MHz and we want to generate samples at AUDIO_SAMPLE_RATE
+	do_sample := true
+	if do_sample {
+		sample := get_sample(apu)
+		sample += 1
+	}
 }
