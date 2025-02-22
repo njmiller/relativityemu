@@ -772,7 +772,7 @@ inc :: proc(state: ^MOS6502, register: ^u8, bus: ^Bus, add_mode: AddressingMode)
 jump :: proc(state: ^MOS6502, bus: ^Bus, add_mode: AddressingMode, sub: bool) {
 	value := getOffset(state, bus, add_mode)
 
-	fmt.printf("JUMP: %04x %04x\n", state.pc, value)
+	// fmt.printf("JUMP: %04x %04x\n", state.pc, value)
 
 	// If jump to subroutine, push the address (minus one) of the return point on the stack
 	// TODO: Says it pushes address-1 of the next operation
@@ -820,15 +820,13 @@ ora :: proc(state: ^MOS6502, bus: ^Bus, add_mode: AddressingMode) {
 }
 
 rti :: proc(state: ^MOS6502, bus: ^Bus) {
-	// log.error("RTI Not Implemented")
+
 	state.status = (pop8(state, bus) | 0b0010_0000) & 0b1110_1111
 
 	high, low: u8
 	popR(&high, &low, state, bus)
 
-	fmt.printf("RTI: %04x\n", getCombined(high, low))
 	state.pc = auto_cast getCombined(high, low)
-	//state.pc = auto_cast pop(state, bus)
 }
 
 rts :: proc(state: ^MOS6502, bus: ^Bus) {
@@ -1041,16 +1039,26 @@ pop8 :: proc(state: ^MOS6502, bus: ^Bus) -> u8 {
 
 pushR :: proc(reg1: u8, reg2: u8, state: ^MOS6502, bus: ^Bus) {
 	addr := u16(state.sp) + 0x0100
-	bus.write(bus, addr - 1, reg2)
 	bus.write(bus, addr, reg1)
-	state.sp -= 2
+	state.sp -= 1
+	addr = u16(state.sp) + 0x0100
+	// bus.write(bus, addr - 1, reg2)
+	bus.write(bus, addr, reg2)
+	state.sp -= 1
+	// state.sp -= 2
 }
 
 popR :: proc(reg1: ^u8, reg2: ^u8, state: ^MOS6502, bus: ^Bus) {
+	// addr := u16(state.sp) + 0x0100
+	// reg2^ = bus.read(bus, addr + 1)
+	// reg1^ = bus.read(bus, addr + 2)
+	// state.sp += 2
+	state.sp += 1
 	addr := u16(state.sp) + 0x0100
-	reg2^ = bus.read(bus, addr + 1)
-	reg1^ = bus.read(bus, addr + 2)
-	state.sp += 2
+	reg2^ = bus.read(bus, addr)
+	state.sp += 1
+	addr = u16(state.sp) + 0x0100
+	reg1^ = bus.read(bus, addr)
 }
 
 getHighLow :: proc(value: u16) -> (u8, u8) {

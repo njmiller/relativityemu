@@ -291,7 +291,6 @@ interrupt_nmi :: proc(state: ^mos6502.MOS6502, bus: ^Bus) {
 	// Push the current PC and status on the stack
 	// and then jump to the location stored at 0xFFFA-0xFFFB
 
-	fmt.printf("NMI PC: %04x\n", u16(state.pc))
 	high, low := mos6502.getHighLow(u16(state.pc))
 	mos6502.pushR(high, low, state, bus)
 	flags := state.status
@@ -308,8 +307,6 @@ interrupt_nmi :: proc(state: ^mos6502.MOS6502, bus: ^Bus) {
 	high_nmi := bus.read(bus, 0xFFFB)
 
 	nmi_pc := (u16(high_nmi) << 8) | u16(low_nmi)
-
-	fmt.printf("NMI: %04x\n", nmi_pc)
 
 	state.pc = auto_cast nmi_pc
 }
