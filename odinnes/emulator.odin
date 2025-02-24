@@ -9,7 +9,7 @@ import "core:time"
 import "hardware:cpu/mos6502"
 import "hardware:system/nes"
 
-import "vendor:sdl2"
+import "vendor:sdl3"
 
 // FRAME_WIDTH :: 256
 // FRAME_HEIGHT :: 240
@@ -501,48 +501,51 @@ run_game :: proc(fn: string) {
 
 	nes_state := nes.init_nes(fn)
 
-	assert(sdl2.Init(sdl2.INIT_VIDEO) == 0, sdl2.GetErrorString())
-	defer sdl2.Quit()
+	init_flags := sdl3.InitFlags{.VIDEO, .AUDIO}
+	// assert(sdl3.Init(sdl3.INIT_VIDEO), auto_cast sdl3.GetError())
+	// assert(sdl3.Init(sdl3.INIT_AUDIO), auto_cast sdl3.GetError())
+	// assert(sdl3.InitSubSystem(sdl3.INIT_AUDIO), auto_cast sdl3.GetError())
+	assert(sdl3.Init(init_flags), auto_cast sdl3.GetError())
+	defer sdl3.Quit()
 
-	window := sdl2.CreateWindow(
-		"Odin Emulator",
-		sdl2.WINDOWPOS_CENTERED,
-		sdl2.WINDOWPOS_CENTERED,
-		640,
-		480,
-		sdl2.WINDOW_SHOWN,
-	)
-	assert(window != nil, sdl2.GetErrorString())
-	defer sdl2.DestroyWindow(window)
+	// window := sdl3.CreateWindow(
+	// "Odin Emulator",
+	// sdl3.WINDOWPOS_CENTERED,
+	// sdl3.WINDOWPOS_CENTERED,
+	// 640,
+	// 480,
+	// sdl3.WINDOW_SHOWN,
+	// )
 
-	// Must not do VSync because we run the tick loop on the same thread as rendering.
-	renderer := sdl2.CreateRenderer(window, -1, sdl2.RENDERER_ACCELERATED)
-	// renderer := sdl2.CreateRenderer(window, -1, sdl2.RENDERER_SOFTWARE)
-	assert(renderer != nil, sdl2.GetErrorString())
-	defer sdl2.DestroyRenderer(renderer)
+	window: ^sdl3.Window
+	renderer: ^sdl3.Renderer
+	if !sdl3.CreateWindowAndRenderer("Relativity NES", 640, 480, {}, &window, &renderer) {
+		fmt.println(sdl3.GetError())
+		return
+	}
+
+	// window := sdl3.CreateWindow("Relativity NES", 640, 480, {})
+
+	// assert(window != nil, auto_cast sdl3.GetError())
+	defer sdl3.DestroyWindow(window)
+
+	// assert(renderer != nil, auto_cast sdl3.GetError())
+	defer sdl3.DestroyRenderer(renderer)
 
 	scaling := 2
-	sdl2.RenderSetScale(renderer, auto_cast scaling, auto_cast scaling)
+	sdl3.SetRenderScale(renderer, auto_cast scaling, auto_cast scaling)
 
-	texture := sdl2.CreateTexture(
+	texture := sdl3.CreateTexture(
 		renderer,
-		auto_cast sdl2.PixelFormatEnum.RGB24,
-		// auto_cast sdl2.PixelFormatEnum.RGBA8888,
-		sdl2.TextureAccess.STREAMING,
+		auto_cast sdl3.PixelFormat.RGB24,
+		// auto_cast sdl3.PixelFormat.RGBA8888,
+		sdl3.TextureAccess.STREAMING,
 		nes.FRAME_WIDTH,
 		nes.FRAME_HEIGHT,
 	)
-	defer sdl2.DestroyTexture(texture)
+	defer sdl3.DestroyTexture(texture)
 
-	sdl2.SetTextureBlendMode(texture, sdl2.BlendMode.NONE)
-
-	// pitch: i32 = nes.FRAME_WIDTH * 3
-	// npix := nes.FRAME_HEIGHT * nes.FRAME_WIDTH * 3
-
-	// sdl2.CreateRGBSurface()
-	// pixels: []u8 = make([]u8, npix)
-	// succt := sdl2.LockTexture(texture, nil, auto_cast &pixels, &pitch)
-	// defer sdl2.UnlockTexture(texture)
+	sdl3.SetTextureBlendMode(texture, {})
 
 	ri := nes.RenderInfo{renderer, texture}
 

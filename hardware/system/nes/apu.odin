@@ -1,23 +1,42 @@
 package nes
 
-// import "vendor:sdl3"
+import "core:fmt"
+
+import "vendor:sdl3"
 
 AUDIO_SAMPLE_RATE :: 44100 // 44.1 KHz
 
-TICKS_PER_SAMPLE :: 1
+TICKS_PER_SAMPLE: f64 : f64(CLOCK_SPEED * 1000.0) / f64(AUDIO_SAMPLE_RATE)
+
+// 60 Hz for 4 step
+TICKS_PER_FRAME: int : auto_cast CLOCK_SPEED * 1000 / 60
 
 // NES APU Implementation
 APU :: struct {
-	pulse1:         PulseChannel,
-	pulse2:         PulseChannel,
-	triangle:       TriangleChannel,
-	noise:          NoiseChannel,
-	dmc:            DMCChannel,
-	clock_all:      bool,
-	sample_counter: f32,
-	five_step:      bool,
-	irq_inhibit:    bool,
-	counter:        u16,
+	pulse1:             PulseChannel,
+	pulse2:             PulseChannel,
+	triangle:           TriangleChannel,
+	noise:              NoiseChannel,
+	dmc:                DMCChannel,
+	clock_all:          bool,
+	five_step:          bool,
+	irq_inhibit:        bool,
+
+	// Tick counter
+	counter:            int,
+
+	// Interaction with audio device. Buffer holds the samples
+	// that have been generated and when it fills we send to
+	// to the audio device
+	audio:              ^sdl3.AudioStream,
+	buffer:             []f32,
+	buf_idx:            int,
+
+	// Frame tick counter. When to clock the linear/length counters
+	frame_tick_counter: f32,
+
+	// Sample counter. When to generate a sample
+	sample_counter:     f64,
 }
 
 LengthCounter :: struct {
@@ -58,14 +77,15 @@ TriangleChannel :: struct {
 	sequence_position: u8,
 }
 
+// The NES APU noise channel generates pseudo-random 1-bit noise at 16 different frequencies
 NoiseChannel :: struct {
 	period:         u16,
 	enabled:        bool,
 	// length_counter: u8,
 	length_counter: LengthCounter,
 	volume:         u8,
-	mode:           bool,
-	shift_register: u16,
+	mode6:          bool,
+	shift_reg:      u16,
 	timer:          u16,
 }
 
@@ -96,7 +116,9 @@ clock_linear_counter :: proc(lc: ^LinearCounter) {
 }
 
 clock_length_counter :: proc(lc: ^LengthCounter) {
-	if lc.val > 0 do lc.val -= 1
+	// Length counter value is decreased unless
+	// it is zero or the halt flag is set
+	if lc.val > 0 && !lc.halt do lc.val -= 1
 }
 
 clock_pulse :: proc(pulse_channel: ^PulseChannel) {
@@ -104,13 +126,15 @@ clock_pulse :: proc(pulse_channel: ^PulseChannel) {
 		pulse_channel.timer -= 1
 	} else {
 		pulse_channel.timer = pulse_channel.period
-		pulse_channel.duty_position = (pulse_channel.duty_position + 1) & 0x7
+		pulse_channel.duty_position = (pulse_channel.duty_position - 1) & 0x7
 	}
 }
 
 output_pulse :: proc(pulse: ^PulseChannel) -> u8 {
 	if !pulse.enabled || pulse.length_counter.val == 0 do return 0
-	
+
+	// Duty table is weird looking because duty_position is decreased
+	// every time the pulse is clocked
     //odinfmt: disable
 	duty_table := [32]u8 {
 		0, 1, 0, 0, 0, 0, 0, 0,
@@ -120,27 +144,13 @@ output_pulse :: proc(pulse: ^PulseChannel) -> u8 {
 	}
     //odinfmt: enable
 
-	
-	//odinfmt: disable
-	duty_table_2 := [32]u8 {
-		0, 0, 0, 0, 0, 0, 0, 1,
-		0, 0, 0, 0, 0, 0, 1, 1,
-		0, 0, 0, 0, 1, 1, 1, 1,
-		1, 1, 1, 1, 1, 1, 0, 0,
-	}
-	//odinfmt: enable
-
 	idx := 8 * pulse.duty + pulse.duty_position
 	return duty_table[idx] * pulse.volume
 	// return duty_table[pulse.duty, pulse.duty_position] * pulse.volume
 
 }
 
-// Clocked every CPU cycle
 clock_triangle :: proc(tri: ^TriangleChannel) {
-	// Counts t, t-1, ..., 1, 0, t, t-1, ...
-	// where t is the timer value written to the register
-	// Every time it goes from 0 to t, it clocks the waveform generator
 	if tri.timer > 0 {
 		tri.timer -= 1
 	} else {
@@ -165,21 +175,24 @@ output_triangle :: proc(tri: ^TriangleChannel) -> u8 {
 	return triangle_table[tri.sequence_position]
 }
 
-
+// TODO: Check implementation of noise
 clock_noise :: proc(noise: ^NoiseChannel) {
 	if noise.timer > 0 {
 		noise.timer -= 1
 	} else {
 		noise.timer = noise.period
+
+		// XOR bit 0 with bit 1 or 6 depending on whether mode6 is set or not
 		feedback: u16 =
-			((noise.shift_register & 0x1) ~ ((noise.shift_register >> (noise.mode ? 6 : 1)) & 0x1))
-		noise.shift_register = (noise.shift_register >> 1) | (feedback << 14)
+			((noise.shift_reg & 0x1) ~ ((noise.shift_reg >> (noise.mode6 ? 6 : 1)) & 0x1))
+		noise.shift_reg = (noise.shift_reg >> 1) | (feedback << 14)
 	}
 }
 
 output_noise :: proc(noise: ^NoiseChannel) -> u8 {
 	if !noise.enabled || noise.length_counter.val == 0 do return 0
-	return u8(noise.shift_register & 0x1) * noise.volume
+
+	return u8(noise.shift_reg & 0x1) * noise.volume
 }
 
 
@@ -199,7 +212,7 @@ output_dmc :: proc(dmc: ^DMCChannel) -> u8 {
 reset_apu :: proc(apu: ^APU) {
 	// TODO: Reset all registers here
 
-	apu.noise.shift_register = 1
+	apu.noise.shift_reg = 1
 }
 
 write_apu_register :: proc(apu: ^APU, addr: u16, value: u8) {
@@ -318,14 +331,15 @@ read_apu_register :: proc(apu: ^APU, addr: u16) -> u8 {
 // clock_dmc(&apu.dmc)
 // }
 
-get_sample :: proc(apu: ^APU) -> u16 {
+get_sample :: proc(apu: ^APU) -> f32 {
 	// Linear approximation. Could also try lookup table
 	pulse_out := 0.00752 * f32(output_pulse(&apu.pulse1) + output_pulse(&apu.pulse2))
 	tnd_out := 0.00851 * f32(output_triangle(&apu.triangle))
 	tnd_out += 0.00494 * f32(output_noise(&apu.noise))
 	tnd_out += 0.00335 * f32(output_dmc(&apu.dmc))
 
-	return u16((pulse_out + tnd_out) * 32767)
+	// return i16((pulse_out + tnd_out) * 32767)
+	return pulse_out + tnd_out
 }
 
 clock_quarter :: proc(apu: ^APU) {
@@ -341,6 +355,9 @@ clock_half :: proc(apu: ^APU) {
 
 tick_apu :: proc(apu: ^APU) {
 	// Tick is called for each CPU cycle
+	// apu.frame_tick_counter += 1
+	apu.sample_counter += 1
+	apu.counter += 1
 
 	apu.clock_all = ~apu.clock_all
 
@@ -356,28 +373,35 @@ tick_apu :: proc(apu: ^APU) {
 	}
 
 
-	// 4-steps per frame
+	// This is done 4 times per frame. We probably
+	// don't need to worry about fractions and can
+	// just deal with ints
+	QUARTER_FRAME :: TICKS_PER_FRAME / 4
+	HALF_FRAME :: 2 * TICKS_PER_FRAME / 4
+	THREEQ_FRAME :: 3 * TICKS_PER_FRAME / 4
+	FULL_FRAME: int
+	if apu.five_step {
+		FULL_FRAME = 5 * TICKS_PER_FRAME / 4
+	} else {
+		FULL_FRAME = TICKS_PER_FRAME
+	}
 
-	QUARTER_FRAME :: 10
 	// Quarter frame
 	if apu.counter == QUARTER_FRAME {
 		clock_quarter(apu)
 	}
 
-	HALF_FRAME :: 20
 	// Half frame
 	if apu.counter == HALF_FRAME {
 		clock_quarter(apu)
 		clock_half(apu)
 	}
 
-	THREEQ_FRAME :: 30
 	// Three Quarters frame
 	if apu.counter == THREEQ_FRAME {
 		clock_quarter(apu)
 	}
 
-	FULL_FRAME: u16 = 40
 	// Full Frame
 	if apu.counter == FULL_FRAME {
 		clock_quarter(apu)
@@ -385,13 +409,68 @@ tick_apu :: proc(apu: ^APU) {
 		if !apu.five_step && !apu.irq_inhibit {
 			// Implement the IRQ
 		}
+
+		// Reset counter at full frame
+		apu.counter = 0
 	}
 
 	// CPU runs at 1.789 MHz and we want to generate samples at AUDIO_SAMPLE_RATE
-	do_sample := false
-	if do_sample {
+	// It would be around 40.5 samples so we need to take care of the fractions
+	if apu.sample_counter >= TICKS_PER_SAMPLE {
 		sample := get_sample(apu)
-		sample += 1
-		// TODO: Implement SDL audio stuff here????
+		apu.buffer[apu.buf_idx] = sample
+		apu.buf_idx += 1
+
+		// If we have filled up a seconds worth of data, send it to
+		// the audio device and reset the buffer index
+		if apu.buf_idx >= AUDIO_SAMPLE_RATE {
+			lenbuf: i32 = AUDIO_SAMPLE_RATE * size_of(f32)
+			buf := raw_data(apu.buffer)
+
+			// TODO: Check if I can just take a pointer to the array
+			sdl3.PutAudioStreamData(apu.audio, buf, lenbuf)
+			apu.buf_idx = 0
+			fmt.println("Putting Samples", apu.buffer[:25])
+			fmt.println(
+				"AAA:",
+				apu.triangle.enabled,
+				apu.triangle.length_counter.val,
+				apu.triangle.linear_counter.val,
+			)
+		}
+
+		apu.sample_counter -= TICKS_PER_SAMPLE
+		// fmt.println("TEST", apu.buf_idx)
 	}
+}
+
+init_audio :: proc(apu: ^APU) {
+	fmt.println("Initializing Audio")
+
+	// Not sure why this needs to be here because I am trying to init the audio at the start of the program
+	// but I get a audio subsytem not initialized if I don't do it here
+	assert(sdl3.InitSubSystem(sdl3.INIT_AUDIO), auto_cast sdl3.GetError())
+
+	audio_spec := sdl3.AudioSpec{.F32, 1, AUDIO_SAMPLE_RATE}
+	apu.audio = sdl3.OpenAudioDeviceStream(
+		sdl3.AUDIO_DEVICE_DEFAULT_PLAYBACK,
+		&audio_spec,
+		nil,
+		nil,
+	)
+
+	assert(sdl3.ResumeAudioDevice(sdl3.GetAudioStreamDevice(apu.audio)), auto_cast sdl3.GetError())
+	// if !tmp {
+	// fmt.println("ISSUE WITH AUDIO DEVICE")
+	// fmt.println(sdl3.GetError())
+	// }
+
+	// tmp2 := sdl3.GetAudioStreamDevice(apu.audio)
+	// fmt.println("TTT:", tmp2)
+
+	// Buffer of one sec
+	apu.buffer = make([]f32, AUDIO_SAMPLE_RATE)
+	apu.buf_idx = 0
+
+	// apu.triangle.enabled = true
 }

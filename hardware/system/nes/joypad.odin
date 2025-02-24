@@ -2,7 +2,7 @@ package nes
 
 import "core:fmt"
 
-import "vendor:sdl2"
+import "vendor:sdl3"
 
 Buttons :: enum u8 {
 	RIGHT,
@@ -70,54 +70,55 @@ check_input1 :: proc(jp: ^JoyPad) {
 }
 */
 
-check_input1b :: proc(jp1: ^JoyPad, jp2: ^JoyPad, keymap: map[sdl2.Scancode]Buttons) -> int {
+check_input1b :: proc(jp1: ^JoyPad, jp2: ^JoyPad, keymap: map[sdl3.Scancode]Buttons) -> int {
 	return -1
 }
 
 check_input1 :: proc(jp: ^JoyPad) -> int {
-	event: sdl2.Event
-	for sdl2.PollEvent(&event) {
+	event: sdl3.Event
+	for sdl3.PollEvent(&event) {
 		#partial switch event.type {
 		case .QUIT:
 			return -1
-		case .KEYDOWN:
-			#partial switch event.key.keysym.scancode {
-			case sdl2.SCANCODE_A:
+		case .KEY_DOWN:
+			#partial switch event.key.scancode {
+			// case sdl3.SCANCODE_A:
+			case .A:
 				jp.button_status += {.BUTTON_A}
-			case sdl2.SCANCODE_S:
+			case .S:
 				jp.button_status += {.BUTTON_B}
-			case sdl2.SCANCODE_UP:
+			case .UP:
 				jp.button_status += {.UP}
-			case sdl2.SCANCODE_DOWN:
+			case .DOWN:
 				jp.button_status += {.DOWN}
-			case sdl2.SCANCODE_LEFT:
+			case .LEFT:
 				jp.button_status += {.LEFT}
-			case sdl2.SCANCODE_RIGHT:
+			case .RIGHT:
 				jp.button_status += {.RIGHT}
-			case sdl2.SCANCODE_SPACE:
+			case .SPACE:
 				jp.button_status += {.SELECT}
-			case sdl2.SCANCODE_RETURN:
+			case .RETURN:
 				jp.button_status += {.START}
-			case sdl2.SCANCODE_ESCAPE:
+			case .ESCAPE:
 				return -1
 			}
-		case .KEYUP:
-			#partial switch event.key.keysym.scancode {
-			case sdl2.SCANCODE_A:
+		case .KEY_UP:
+			#partial switch event.key.scancode {
+			case .A:
 				jp.button_status -= {.BUTTON_A}
-			case sdl2.SCANCODE_S:
+			case .S:
 				jp.button_status -= {.BUTTON_B}
-			case sdl2.SCANCODE_UP:
+			case .UP:
 				jp.button_status -= {.UP}
-			case sdl2.SCANCODE_DOWN:
+			case .DOWN:
 				jp.button_status -= {.DOWN}
-			case sdl2.SCANCODE_LEFT:
+			case .LEFT:
 				jp.button_status -= {.LEFT}
-			case sdl2.SCANCODE_RIGHT:
+			case .RIGHT:
 				jp.button_status -= {.RIGHT}
-			case sdl2.SCANCODE_SPACE:
+			case .SPACE:
 				jp.button_status -= {.SELECT}
-			case sdl2.SCANCODE_RETURN:
+			case .RETURN:
 				jp.button_status -= {.START}
 			}
 		}

@@ -4,7 +4,7 @@ import "core:fmt"
 import "core:log"
 import "core:time"
 
-import "vendor:sdl2"
+import "vendor:sdl3"
 
 import "hardware:cpu/mos6502"
 
@@ -12,9 +12,9 @@ import "hardware:cpu/mos6502"
 CLOCK_SPEED: u64 : 1789 // KHz
 
 RenderInfo :: struct {
-	renderer: ^sdl2.Renderer,
-	texture:  ^sdl2.Texture,
-	// surface:  ^sdl2.Surface,
+	renderer: ^sdl3.Renderer,
+	texture:  ^sdl3.Texture,
+	// surface:  ^sdl3.Surface,
 	// pixels:   []u8,
 }
 
@@ -28,7 +28,6 @@ Bus :: struct {
 	mapper:    MapperInfo,
 	jp1:       JoyPad,
 	jp2:       JoyPad,
-	// renderer:  ^sdl2.Renderer,
 	ri:        RenderInfo,
 	rom:       ROM,
 }
@@ -45,6 +44,9 @@ PPU_REGISTERS_MIRRORS_END: u16 : 0x3FFF
 APU_REGISTERS: u16 : 0x4000
 APU_REGISTERS_END: u16 : 0x4015
 
+// TODO: Maybe put all the PRG ROM and CHR ROM data in the
+// cartridge structure and just pass that around to places
+// where it would be needed
 bus_mem_read :: proc(bus: ^mos6502.Bus, addr: u16) -> u8 {
 	bus := cast(^Bus)bus
 	mem_val: u8
@@ -97,7 +99,8 @@ bus_mem_write :: proc(bus: ^mos6502.Bus, addr: u16, data: u8) {
 		write_joypad(&bus.jp1, data)
 		write_joypad(&bus.jp2, data)
 	case 0x4017:
-	// write_joypad(&bus.jp2, data)
+		// Writing to 0x4017 writes to the APU
+		write_apu_register(&bus.apu, addr, data)
 	case 0x6000 ..= 0x7FFF:
 		bus.prg_ram[addr - 0x6000] = data
 	case 0x8000 ..= 0xFFFF:
@@ -167,6 +170,8 @@ init_nes :: proc(fn: string) -> ^NES {
 	// if mirroring == 1 do nes.bus.ppu.mirroring = .VERTICAL
 	// if mirroring == 2 do nes.bus.ppu.mirroring = .FOUR_SCREEN
 
+	init_audio(&nes.bus.apu)
+
 	reset(nes)
 
 	return nes
@@ -222,12 +227,12 @@ tick :: proc(bus: ^Bus, ncycles: int) {
 	for i in 0 ..< 3 * ncycles {
 		tick_once(&bus.ppu)
 	}
-	// for i in 0 ..< ncycles {
-	// tick_once(&bus.ppu)
-	// tick_once(&bus.ppu)
-	// tick_once(&bus.ppu)
-	// tick_apu(&bus.apu)
-	// }
+	for i in 0 ..< ncycles {
+		// tick_once(&bus.ppu)
+		// tick_once(&bus.ppu)
+		// tick_once(&bus.ppu)
+		tick_apu(&bus.apu)
+	}
 
 	nmi_after := bus.ppu.nmi_interrupt
 

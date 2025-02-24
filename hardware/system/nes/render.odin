@@ -5,7 +5,9 @@ import "core:log"
 import "core:mem"
 
 // import rl "vendor:raylib"
-import "vendor:sdl2"
+import "vendor:sdl3"
+
+NTSC_FRAME_RATE :: 29.97
 
 /*
 SYSTEM_PALETTE: [64]rl.Color =  {
@@ -227,7 +229,7 @@ render_image :: proc(colors: []u8, ri: ^RenderInfo) {
 	renderer := ri.renderer
 	texture := ri.texture
 
-	sdl2.RenderClear(renderer)
+	sdl3.RenderClear(renderer)
 
 	pitch: i32 = FRAME_WIDTH * 3
 	// pixels: []u8
@@ -236,14 +238,9 @@ render_image :: proc(colors: []u8, ri: ^RenderInfo) {
 	pixels := make([]u8, npix)
 	// defer delete(pixels)
 
-	succt := sdl2.LockTexture(texture, nil, auto_cast &pixels, &pitch)
+	succt := sdl3.LockTexture(texture, nil, auto_cast &pixels, &pitch)
 
 	// copy frame.data to pixels
-	// copy(pixels, frame.data2[:])
-
-	// idx0 := FRAME_WIDTH * 90
-	// idx1 := FRAME_WIDTH * 91
-	// fmt.println("TEST:", colors[idx0:idx1])
 	for i in 0 ..< FRAME_HEIGHT {
 		for j in 0 ..< FRAME_WIDTH {
 			idx_orig := FRAME_WIDTH * i + j
@@ -258,13 +255,13 @@ render_image :: proc(colors: []u8, ri: ^RenderInfo) {
 		}
 	}
 
-	sdl2.UnlockTexture(texture)
+	sdl3.UnlockTexture(texture)
 
-	rect := sdl2.Rect{0, 0, FRAME_WIDTH, FRAME_HEIGHT}
+	frect := sdl3.FRect{0, 0, FRAME_WIDTH, FRAME_HEIGHT}
 
-	succc := sdl2.RenderCopy(renderer, texture, nil, &rect)
+	succc := sdl3.RenderTexture(renderer, texture, nil, &frect)
 
-	sdl2.RenderPresent(renderer)
+	sdl3.RenderPresent(renderer)
 }
 
 // Set the color in one pixel in the frame
@@ -283,7 +280,7 @@ render_frame_texture :: proc(frame: ^Frame, ri: ^RenderInfo) {
 	renderer := ri.renderer
 	texture := ri.texture
 
-	sdl2.RenderClear(renderer)
+	sdl3.RenderClear(renderer)
 
 	pitch: i32 = FRAME_WIDTH * 3
 	// pixels: []u8
@@ -292,28 +289,29 @@ render_frame_texture :: proc(frame: ^Frame, ri: ^RenderInfo) {
 	pixels := make([]u8, npix)
 	// defer delete(pixels)
 
-	succt := sdl2.LockTexture(texture, nil, auto_cast &pixels, &pitch)
+	succt := sdl3.LockTexture(texture, nil, auto_cast &pixels, &pitch)
 
 	// copy frame.data to pixels
 	copy(pixels, frame.data2[:])
 
-	sdl2.UnlockTexture(texture)
+	sdl3.UnlockTexture(texture)
 
-	rect := sdl2.Rect{0, 0, FRAME_WIDTH, FRAME_HEIGHT}
+	rect := sdl3.Rect{0, 0, FRAME_WIDTH, FRAME_HEIGHT}
 
-	succc := sdl2.RenderCopy(renderer, texture, nil, &rect)
+	// succc := sdl3.RenderCopy(renderer, texture, nil, &rect)
 
-	sdl2.RenderPresent(renderer)
+	sdl3.RenderPresent(renderer)
 
 	// delete(pixels)
 }
 
+/*
 render_frame :: proc(frame: ^Frame, ri: ^RenderInfo) {
 
 	renderer := ri.renderer
 	texture := ri.texture
 
-	sdl2.RenderClear(renderer)
+	sdl3.RenderClear(renderer)
 
 	for x in 0 ..< FRAME_WIDTH {
 		for y in 0 ..< FRAME_HEIGHT {
@@ -321,13 +319,14 @@ render_frame :: proc(frame: ^Frame, ri: ^RenderInfo) {
 			pix_y: i32 = auto_cast y
 			off := y * FRAME_WIDTH + x
 			color := frame.data[off]
-			sdl2.SetRenderDrawColor(renderer, color[0], color[1], color[2], 255)
-			sdl2.RenderDrawPoint(renderer, pix_x, pix_y)
+			sdl3.SetRenderDrawColor(renderer, color[0], color[1], color[2], 255)
+			sdl3.RenderDrawPoint(renderer, pix_x, pix_y)
 		}
 	}
 
-	sdl2.RenderPresent(renderer)
+	sdl3.RenderPresent(renderer)
 }
+*/
 
 render_background :: proc(ppu: ^Ricoh2c02, frame: ^Frame) {
 	scroll_x := int(ppu.scroll.x_scroll)
