@@ -5,11 +5,14 @@ import "core:fmt"
 import "vendor:sdl3"
 
 AUDIO_SAMPLE_RATE :: 44100 // 44.1 KHz
+// AUDIO_SAMPLE_RATE :: 48000
 
 TICKS_PER_SAMPLE: f64 : f64(CLOCK_SPEED * 1000.0) / f64(AUDIO_SAMPLE_RATE)
 
 // 60 Hz for 4 step
 TICKS_PER_FRAME: int : auto_cast CLOCK_SPEED * 1000 / 60
+
+BUFFER_SIZE :: 512
 
 // NES APU Implementation
 APU :: struct {
@@ -60,7 +63,16 @@ Envelope :: struct {
 	loop:            bool,
 }
 
-Sweep :: struct {}
+Sweep :: struct {
+	enabled:       bool,
+	period:        u8,
+	negate:        bool,
+	shift:         u8,
+	divider:       u8,
+	reload:        bool,
+	target_period: u16,
+	new_period:    int,
+}
 
 // Pulse Channel struct and functions
 PulseChannel :: struct {
@@ -77,6 +89,7 @@ PulseChannel :: struct {
 	duty_position:  u8,
 	length_counter: LengthCounter,
 	env:            Envelope,
+	sweep:          Sweep,
 }
 
 // Triangle Channel
@@ -111,6 +124,8 @@ DMCChannel :: struct {
 	timer:          u16,
 	output_level:   u8,
 	interrupt:      bool,
+	loop:           bool,
+	rate:           u8,
 }
 
 //odinfmt: disable
@@ -162,6 +177,46 @@ clock_env_decay :: proc(env: ^Envelope) {
 	}
 }
 
+clock_sweep :: proc(pulse: ^PulseChannel, num: int) {
+	if pulse.sweep.divider >= 0 {
+		pulse.sweep.divider -= 1
+		return
+	}
+
+	if pulse.sweep.enabled && pulse.sweep.shift != 0 && !is_pulse_muted(pulse) {
+		pulse.period = pulse.sweep.target_period
+	}
+
+	if pulse.sweep.reload {
+		pulse.sweep.divider = pulse.sweep.period
+		pulse.sweep.reload = false
+	}
+
+}
+
+update_target_period :: proc(sweep: ^Sweep, period: u8, num: int) -> u8 {
+	period_shift: int = auto_cast (period >> sweep.shift)
+
+	if sweep.negate {
+		period_shift = -period_shift
+
+		// Pulses 1 and 2 have different negations of the period shift
+		if num == 1 do period_shift -= 1
+	}
+
+	target_period := int(period) + period_shift
+
+	if target_period < 0 do target_period = 0
+
+	return u8(target_period)
+}
+
+is_pulse_muted :: proc(pulse: ^PulseChannel) -> bool {
+	// If the current period is less than 8
+	// If at any time, the target period is greater than 0x7FF
+	return (pulse.period < 8) || (pulse.sweep.target_period > 0x7FF)
+}
+
 clock_pulse :: proc(pulse_channel: ^PulseChannel) {
 	if pulse_channel.timer > 0 {
 		pulse_channel.timer -= 1
@@ -172,7 +227,7 @@ clock_pulse :: proc(pulse_channel: ^PulseChannel) {
 }
 
 output_pulse :: proc(pulse: ^PulseChannel) -> u8 {
-	if !pulse.enabled || pulse.length_counter.val == 0 do return 0
+	if !pulse.enabled || pulse.length_counter.val == 0 || is_pulse_muted(pulse) do return 0
 
 	// Duty table is weird looking because duty_position is decreased
 	// every time the pulse is clocked
@@ -264,37 +319,34 @@ write_apu_register :: proc(apu: ^APU, addr: u16, value: u8) {
 	switch addr {
 	case 0x4000:
 		apu.pulse1.duty = (value >> 6) & 0x3
-		// apu.pulse1.length_counter_halt = (value >> 5) & 0x1 != 0
 		apu.pulse1.length_counter.halt = value & 0b0010_0000 != 0
 		apu.pulse1.env.constant_volume = value & 0b0001_0000 != 0
 		apu.pulse1.env.reload = value & 0xF
 	case 0x4001:
-	// apu.pulse1.sweep_enabled = (value >> 7) & 0x1 != 0 ? true : false
-	// apu.pulse1.sweep_period = (value >> 4) & 0x7
-	// apu.pulse1.sweep_negate = (value >> 3) & 0x1
-	// apu.pulse1.sweep_shift = value & 0x7
-	//apu.pulse1.sweep_reload = True
+		apu.pulse1.sweep.enabled = (value & 0b1000_0000) != 0
+		// apu.pulse1.sweep.period = (value >> 4) & 0x7
+		apu.pulse1.sweep.period = ((value >> 4) & 0x7) + 1
+		apu.pulse1.sweep.negate = (value & 0b0000_1000) != 0
+		apu.pulse1.sweep.shift = value & 0x7
+		apu.pulse1.sweep.reload = true
 	case 0x4002:
 		// Keep highest 3 of 11 bits and add the 8 bits here as the lowest 8 bits
 		apu.pulse1.period = apu.pulse1.period & 0x700 | u16(value)
 	case 0x4003:
 		apu.pulse1.period = (apu.pulse1.period & 0xFF) | ((u16(value) & 0x7) << 8)
 		apu.pulse1.length_counter.val = lc_table[value >> 3]
-		// apu.pulse1.envelope_start = true
 		apu.pulse1.env.start = true
 	case 0x4004:
 		apu.pulse2.duty = (value >> 6) & 0x3
-		// apu.pulse2.length_counter_halt = (value >> 5) & 0x1 != 0
 		apu.pulse2.length_counter.halt = value & 0b0010_0000 != 0
-		// apu.pulse2.constant_volume = (value >> 4) & 0x1 != 0
 		apu.pulse2.env.constant_volume = value & 0b0001_0000 != 0
 		apu.pulse2.env.reload = value & 0xF
 	case 0x4005:
-	// apu.pulse2.sweep_enabled = (value >> 7) & 0x1 != 0 ? true : false
-	// apu.pulse2.sweep_period = (value >> 4) & 0x7
-	// apu.pulse2.sweep_negate = (value >> 3) & 0x1
-	// apu.pulse2.sweep_shift = value & 0x7
-	//apu.pulse1.sweep_reload = True
+		apu.pulse2.sweep.enabled = (value & 0b1000_0000) != 0
+		apu.pulse2.sweep.period = ((value >> 4) & 0x7) + 1
+		apu.pulse2.sweep.negate = (value & 0b0000_1000) != 0
+		apu.pulse2.sweep.shift = value & 0x7
+		apu.pulse2.sweep.reload = true
 	case 0x4006:
 		apu.pulse2.period = (apu.pulse2.period & 0x700) | u16(value)
 	case 0x4007:
@@ -397,6 +449,9 @@ clock_half :: proc(apu: ^APU) {
 	clock_length_counter(&apu.pulse2.length_counter)
 	clock_length_counter(&apu.triangle.length_counter)
 	clock_length_counter(&apu.noise.length_counter)
+
+	clock_sweep(&apu.pulse1, 1)
+	clock_sweep(&apu.pulse2, 2)
 }
 
 tick_apu :: proc(apu: ^APU) {
@@ -471,22 +526,18 @@ tick_apu :: proc(apu: ^APU) {
 		apu.buffer[apu.buf_idx] = sample
 		apu.buf_idx += 1
 
+		// sdl3.PutAudioStreamData(apu.audio, &sample, size_of(f32))
+
 		// If we have filled up a seconds worth of data, send it to
 		// the audio device and reset the buffer index
-		if apu.buf_idx >= AUDIO_SAMPLE_RATE {
-			lenbuf: i32 = AUDIO_SAMPLE_RATE * size_of(f32)
+		if apu.buf_idx >= BUFFER_SIZE {
+			lenbuf: i32 = BUFFER_SIZE * size_of(f32)
 			buf := raw_data(apu.buffer)
 
 			// TODO: Check if I can just take a pointer to the array
 			sdl3.PutAudioStreamData(apu.audio, buf, lenbuf)
 			apu.buf_idx = 0
-			fmt.println("Putting Samples", apu.buffer[:25])
-			fmt.println(
-				"AAA:",
-				apu.triangle.enabled,
-				apu.triangle.length_counter.val,
-				apu.triangle.linear_counter.val,
-			)
+			// fmt.println("Putting Samples", apu.buffer[:25])
 		}
 
 		apu.sample_counter -= TICKS_PER_SAMPLE
@@ -519,7 +570,8 @@ init_audio :: proc(apu: ^APU) {
 	// fmt.println("TTT:", tmp2)
 
 	// Buffer of one sec
-	apu.buffer = make([]f32, AUDIO_SAMPLE_RATE)
+	// apu.buffer = make([]f32, AUDIO_SAMPLE_RATE)
+	apu.buffer = make([]f32, BUFFER_SIZE)
 	apu.buf_idx = 0
 
 	// apu.triangle.enabled = true
