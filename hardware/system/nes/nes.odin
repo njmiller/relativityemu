@@ -64,7 +64,6 @@ bus_mem_read :: proc(bus: ^mos6502.Bus, addr: u16) -> u8 {
 	// case 0x4000 ..= 0x4015:
 	case APU_REGISTERS ..= APU_REGISTERS_END:
 		mem_val = read_apu_register(&bus.apu, addr)
-	// Ignore the APU stuff for now
 	case 0x6000 ..= 0x7FFF:
 		mem_val = bus.prg_ram[addr - 0x6000]
 	case 0x8000 ..= 0xFFFF:
@@ -121,17 +120,6 @@ ppu_oam_dma :: proc(bus: ^Bus, addr: u8) {
 		bus.ppu.oam_data[i] = bus.read(bus, u16(i) + addr_min)
 	}
 }
-
-/*
-prg_read :: proc(prg_rom: []u8, addr: u16) -> u8 {
-	addr := addr - 0x8000
-	// if len(prg_rom) == 0x4000 && addr >= 0x4000 {
-	// addr = addr % 0x4000
-	// }
-	// Should have implemented the mirroring already
-	return prg_rom[addr]
-}
-*/
 
 init_nes :: proc(fn: string) -> ^NES {
 	// nes := NES{}

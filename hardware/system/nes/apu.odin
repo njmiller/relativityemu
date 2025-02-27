@@ -51,20 +51,32 @@ LinearCounter :: struct {
 	// reload_flag: bool,
 }
 
+Envelope :: struct {
+	reload:          u8,
+	decay:           u8,
+	constant_volume: bool,
+	divider:         u8,
+	start:           bool,
+	loop:            bool,
+}
+
+Sweep :: struct {}
+
 // Pulse Channel struct and functions
 PulseChannel :: struct {
-	duty:            u8,
+	duty:           u8,
 	// length_counter:      u8,
-	envelope_volume: u8,
-	period:          u16,
-	enabled:         bool,
+	// envelope_volume: u8,
+	period:         u16,
+	enabled:        bool,
 	// length_counter_halt: bool,
-	constant_volume: bool,
-	envelope_start:  bool,
-	volume:          u8,
-	timer:           u16,
-	duty_position:   u8,
-	length_counter:  LengthCounter,
+	// constant_volume: bool,
+	// envelope_start:  bool,
+	// volume:         u8,
+	timer:          u16,
+	duty_position:  u8,
+	length_counter: LengthCounter,
+	env:            Envelope,
 }
 
 // Triangle Channel
@@ -81,12 +93,13 @@ TriangleChannel :: struct {
 NoiseChannel :: struct {
 	period:         u16,
 	enabled:        bool,
-	// length_counter: u8,
 	length_counter: LengthCounter,
-	volume:         u8,
+	env:            Envelope,
+	// volume:          u8,
 	mode6:          bool,
 	shift_reg:      u16,
 	timer:          u16,
+	// constant_volume: bool,
 }
 
 DMCChannel :: struct {
@@ -104,6 +117,7 @@ DMCChannel :: struct {
 lc_table : [32]u8 = {10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14,
 					 12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30}
 
+np_table : [16]u16 = {4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068}
 //odinfmt: enable
 
 clock_linear_counter :: proc(lc: ^LinearCounter) {
@@ -119,6 +133,33 @@ clock_length_counter :: proc(lc: ^LengthCounter) {
 	// Length counter value is decreased unless
 	// it is zero or the halt flag is set
 	if lc.val > 0 && !lc.halt do lc.val -= 1
+}
+
+clock_envelope :: proc(env: ^Envelope) {
+	if env.start {
+		env.start = false
+		env.decay = 15
+		env.divider = env.reload
+	} else {
+		clock_env_divider(env)
+	}
+}
+
+clock_env_divider :: proc(env: ^Envelope) {
+	if env.divider > 0 {
+		env.divider -= 1
+	} else {
+		env.divider = env.reload
+		clock_env_decay(env)
+	}
+}
+
+clock_env_decay :: proc(env: ^Envelope) {
+	if env.decay > 0 {
+		env.decay -= 1
+	} else if env.loop {
+		env.decay = 15
+	}
 }
 
 clock_pulse :: proc(pulse_channel: ^PulseChannel) {
@@ -145,7 +186,10 @@ output_pulse :: proc(pulse: ^PulseChannel) -> u8 {
     //odinfmt: enable
 
 	idx := 8 * pulse.duty + pulse.duty_position
-	return duty_table[idx] * pulse.volume
+
+	volume := pulse.env.reload if pulse.env.constant_volume else pulse.env.decay
+	return duty_table[idx] * volume
+
 	// return duty_table[pulse.duty, pulse.duty_position] * pulse.volume
 
 }
@@ -183,8 +227,7 @@ clock_noise :: proc(noise: ^NoiseChannel) {
 		noise.timer = noise.period
 
 		// XOR bit 0 with bit 1 or 6 depending on whether mode6 is set or not
-		feedback: u16 =
-			((noise.shift_reg & 0x1) ~ ((noise.shift_reg >> (noise.mode6 ? 6 : 1)) & 0x1))
+		feedback := ((noise.shift_reg & 0x1) ~ ((noise.shift_reg >> (noise.mode6 ? 6 : 1)) & 0x1))
 		noise.shift_reg = (noise.shift_reg >> 1) | (feedback << 14)
 	}
 }
@@ -192,7 +235,9 @@ clock_noise :: proc(noise: ^NoiseChannel) {
 output_noise :: proc(noise: ^NoiseChannel) -> u8 {
 	if !noise.enabled || noise.length_counter.val == 0 do return 0
 
-	return u8(noise.shift_reg & 0x1) * noise.volume
+	volume := noise.env.reload if noise.env.constant_volume else noise.env.decay
+
+	return u8(noise.shift_reg & 0x1) * volume
 }
 
 
@@ -220,9 +265,9 @@ write_apu_register :: proc(apu: ^APU, addr: u16, value: u8) {
 	case 0x4000:
 		apu.pulse1.duty = (value >> 6) & 0x3
 		// apu.pulse1.length_counter_halt = (value >> 5) & 0x1 != 0
-		apu.pulse2.length_counter.halt = value & 0b0010_0000 != 0
-		apu.pulse1.constant_volume = value & 0b0001_0000 != 0
-		apu.pulse1.volume = value & 0xF
+		apu.pulse1.length_counter.halt = value & 0b0010_0000 != 0
+		apu.pulse1.env.constant_volume = value & 0b0001_0000 != 0
+		apu.pulse1.env.reload = value & 0xF
 	case 0x4001:
 	// apu.pulse1.sweep_enabled = (value >> 7) & 0x1 != 0 ? true : false
 	// apu.pulse1.sweep_period = (value >> 4) & 0x7
@@ -235,14 +280,15 @@ write_apu_register :: proc(apu: ^APU, addr: u16, value: u8) {
 	case 0x4003:
 		apu.pulse1.period = (apu.pulse1.period & 0xFF) | ((u16(value) & 0x7) << 8)
 		apu.pulse1.length_counter.val = lc_table[value >> 3]
-		apu.pulse1.envelope_start = true
+		// apu.pulse1.envelope_start = true
+		apu.pulse1.env.start = true
 	case 0x4004:
 		apu.pulse2.duty = (value >> 6) & 0x3
 		// apu.pulse2.length_counter_halt = (value >> 5) & 0x1 != 0
 		apu.pulse2.length_counter.halt = value & 0b0010_0000 != 0
 		// apu.pulse2.constant_volume = (value >> 4) & 0x1 != 0
-		apu.pulse2.constant_volume = value & 0b0001_0000 != 0
-		apu.pulse2.volume = value & 0xF
+		apu.pulse2.env.constant_volume = value & 0b0001_0000 != 0
+		apu.pulse2.env.reload = value & 0xF
 	case 0x4005:
 	// apu.pulse2.sweep_enabled = (value >> 7) & 0x1 != 0 ? true : false
 	// apu.pulse2.sweep_period = (value >> 4) & 0x7
@@ -254,7 +300,7 @@ write_apu_register :: proc(apu: ^APU, addr: u16, value: u8) {
 	case 0x4007:
 		apu.pulse2.period = (apu.pulse2.period & 0xFF) | ((u16(value) & 0x7) << 8)
 		apu.pulse2.length_counter.val = lc_table[value >> 3]
-		apu.pulse2.envelope_start = true
+		apu.pulse2.env.start = true
 	case 0x4008:
 		apu.triangle.linear_counter.control = value >> 7 != 0
 		apu.triangle.length_counter.halt = value >> 7 != 0
@@ -267,16 +313,16 @@ write_apu_register :: proc(apu: ^APU, addr: u16, value: u8) {
 		apu.triangle.period = (apu.triangle.period & 0xFF) | ((u16(value) & 0x7) << 8)
 		apu.triangle.length_counter.val = lc_table[value >> 3]
 	case 0x400C:
-		apu.noise.volume = value & 0xF
-	// apu.noise.length_counter_halt = (value >> 5) & 0x1 != 0
-	// apu.noise.constant_volume = (value >> 4) & 0x1 != 0
+		apu.noise.env.reload = value & 0xF
+		apu.noise.length_counter.halt = (value & 0b0010_0000) != 0
+		apu.noise.env.constant_volume = (value & 0b0001_0000) != 0
 	case 0x400D:
 	// not used
 	case 0x400E:
-		apu.noise.period = u16(value & 0xF)
-	// apu.noise.loop_noise = value >> 7 != 0
+		apu.noise.period = np_table[value & 0xF]
+		apu.noise.mode6 = (value & 0b1000_0000) != 0
 	case 0x400F:
-	// apu.noise.length_counter_load = value >> 3
+		apu.noise.length_counter.val = lc_table[value >> 3]
 	case 0x4010:
 	// stuff here
 	case 0x4011:
@@ -364,11 +410,15 @@ tick_apu :: proc(apu: ^APU) {
 	// Triangle is clocked every CPU cycle
 	clock_triangle(&apu.triangle)
 
+	// Should be clocked every other CPU cycle, but timer that this clocks
+	// is number of CPU cycles
+	clock_noise(&apu.noise)
+
 	// Everything else is clocked every other CPU cycle
 	if apu.clock_all {
 		clock_pulse(&apu.pulse1)
 		clock_pulse(&apu.pulse2)
-		clock_noise(&apu.noise)
+		// clock_noise(&apu.noise)
 		clock_dmc(&apu.dmc)
 	}
 
