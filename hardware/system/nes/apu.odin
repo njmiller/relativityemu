@@ -20,7 +20,7 @@ APU :: struct {
 	pulse2:             PulseChannel,
 	triangle:           TriangleChannel,
 	noise:              NoiseChannel,
-	dmc:                DMCChannel,
+	dmc:                DMC,
 	clock_all:          bool,
 	five_step:          bool,
 	irq_inhibit:        bool,
@@ -115,17 +115,31 @@ NoiseChannel :: struct {
 	// constant_volume: bool,
 }
 
-DMCChannel :: struct {
-	sample_address: u16,
-	sample_length:  u16,
-	current_sample: u8,
-	enabled:        bool,
-	period:         u16,
-	timer:          u16,
-	output_level:   u8,
-	interrupt:      bool,
-	loop:           bool,
-	rate:           u8,
+DMC :: struct {
+	enabled:         bool,
+	silence:         bool,
+	period:          u16,
+	timer:           u16,
+	loop:            bool,
+
+	// For where to read memory
+	sample_address:  u16,
+	sample_length:   u16,
+	bytes_remaining: u16,
+	curr_address:    u16,
+
+	// Output
+	output_level:    u8,
+	interrupt:       bool,
+
+	// Sample processing
+	sample_buffer:   u8,
+	shift_register:  u8,
+	bits_remaining:  int,
+	last_sample:     bool,
+
+	// DMC needs access to the bus to read the samples from memory
+	bus:             ^Bus,
 }
 
 //odinfmt: disable
@@ -133,6 +147,8 @@ lc_table : [32]u8 = {10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 1
 					 12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30}
 
 np_table : [16]u16 = {4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068}
+
+dmc_table : [16]u16 = {428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106, 84, 72, 54}
 //odinfmt: enable
 
 clock_linear_counter :: proc(lc: ^LinearCounter) {
@@ -296,16 +312,72 @@ output_noise :: proc(noise: ^NoiseChannel) -> u8 {
 }
 
 
-clock_dmc :: proc(dmc: ^DMCChannel) {
+clock_dmc :: proc(dmc: ^DMC) {
 	if dmc.timer > 0 {
 		dmc.timer -= 1
 	} else {
 		dmc.timer = dmc.period
-		// TODO: DMC Sample processing would go here
+
+		// Only change the output level if we have bits remaining
+		// Only time this should be 0 here is if we ran out of
+		// data to load or disabled the DMC
+		if dmc.bits_remaining > 0 {
+
+			// Output level is shifted by 2 or -2 depending on bit 0 of shift register
+			// But output level is unchanged if it would wrap the 7-bit value
+			if dmc.shift_register & 1 != 0 && dmc.output_level <= 125 do dmc.output_level += 2
+			if dmc.shift_register & 1 == 0 && dmc.output_level >= 2 do dmc.output_level -= 2
+
+			dmc.shift_register >>= 1
+			dmc.bits_remaining -= 1
+		}
+
+		// No else statement because we want it to possibly run after the previous statement 
+		if dmc.bits_remaining == 0 do load_new_dmc_sample(dmc)
 	}
 }
 
-output_dmc :: proc(dmc: ^DMCChannel) -> u8 {
+load_new_dmc_sample :: proc(dmc: ^DMC) {
+
+	// If the last sample was already moved to the shift
+	// register or the dmc is not enabled, we silence the channel
+	if dmc.last_sample || !dmc.enabled {
+		dmc.silence = true
+		return
+	}
+
+	dmc.silence = false
+	dmc.shift_register = dmc.sample_buffer
+	dmc.bits_remaining = 8
+
+	// Load the new sample into the sample buffer. If there are no more
+	// samples to load, then set the last_sample flag as the last sample
+	// has already been moved to the shift register
+	if dmc.bytes_remaining == 0 {
+		if dmc.loop {
+			dmc.bytes_remaining = dmc.sample_length
+			dmc.curr_address = dmc.sample_address
+		} else {
+			dmc.last_sample = true
+			return
+		}
+	}
+
+	dmc.sample_buffer = dmc.bus.read(dmc.bus, dmc.curr_address)
+	// TODO: Probably need to clock PPU here since reading a sample stalls the CPU for 1-4 cycles
+
+	if dmc.curr_address == 0xFFFF {
+		dmc.curr_address = 0xC000
+	} else {
+		dmc.curr_address += 1
+	}
+
+	dmc.bytes_remaining -= 1
+}
+
+output_dmc :: proc(dmc: ^DMC) -> u8 {
+	if dmc.silence do return 0
+
 	return dmc.output_level
 }
 
@@ -376,13 +448,20 @@ write_apu_register :: proc(apu: ^APU, addr: u16, value: u8) {
 	case 0x400F:
 		apu.noise.length_counter.val = lc_table[value >> 3]
 	case 0x4010:
+		apu.dmc.interrupt = (value & 0b1000_0000) != 0
+		apu.dmc.loop = (value & 0b0100_0000) != 0
+		idx := value & 0b0000_1111
+		apu.dmc.period = dmc_table[idx]
 	// stuff here
 	case 0x4011:
+		// Output level is 7 bit
+		apu.dmc.output_level = value & 0b0111_1111
 	// stuff here
 	case 0x4012:
-		apu.dmc.sample_address = u16(value)
+		apu.dmc.sample_address = 0xC000 | (u16(value) << 6)
 	case 0x4013:
-		apu.dmc.sample_length = u16(value)
+		apu.dmc.sample_length = (u16(value) << 4) + 1
+		apu.dmc.last_sample = false
 	case 0x4015:
 		apu.pulse1.enabled = (value & 0b0000_0001) != 0
 		apu.pulse2.enabled = (value & 0b0000_0010) != 0

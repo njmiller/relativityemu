@@ -154,6 +154,9 @@ init_nes :: proc(fn: string) -> ^NES {
 	nes.bus.ppu.chr_rom = rom.chr_rom
 	nes.bus.ppu.mirroring = rom.mirroring
 
+	// APU DMC needs ability to read memory
+	nes.bus.apu.dmc.bus = &nes.bus
+
 	// if mirroring == 0 do nes.bus.ppu.mirroring = .HORIZONTAL
 	// if mirroring == 1 do nes.bus.ppu.mirroring = .VERTICAL
 	// if mirroring == 2 do nes.bus.ppu.mirroring = .FOUR_SCREEN
