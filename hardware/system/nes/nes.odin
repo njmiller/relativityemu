@@ -56,7 +56,7 @@ bus_mem_read :: proc(bus: ^mos6502.Bus, addr: u16) -> u8 {
 		mirror_down_addr := addr & 0b00000111_11111111
 		mem_val = bus.cpu_vram[mirror_down_addr]
 	case PPU_REGISTERS ..= PPU_REGISTERS_MIRRORS_END:
-		mem_val = read_ppu_register(&bus.ppu, addr)
+		mem_val = read_ppu_register(&bus.ppu, &bus.mapper, addr)
 	case 0x4016:
 		mem_val = read_joypad(&bus.jp1)
 	case 0x4017:
@@ -89,7 +89,7 @@ bus_mem_write :: proc(bus: ^mos6502.Bus, addr: u16, data: u8) {
 		bus.cpu_vram[mirror_down_addr] = data
 	// Start of the PPU registers
 	case PPU_REGISTERS ..= PPU_REGISTERS_MIRRORS_END:
-		write_ppu_register(&bus.ppu, addr, data)
+		write_ppu_register(&bus.ppu, &bus.mapper, addr, data)
 	case 0x4014:
 		ppu_oam_dma(bus, data)
 	case APU_REGISTERS ..= APU_REGISTERS_END:
@@ -216,7 +216,7 @@ tick :: proc(bus: ^Bus, ncycles: int) {
 	nmi_before := bus.ppu.nmi_interrupt
 	// tick_ppu(&bus.ppu, 3 * ncycles)
 	for i in 0 ..< 3 * ncycles {
-		tick_once(&bus.ppu)
+		tick_once(&bus.ppu, &bus.mapper)
 	}
 	for i in 0 ..< ncycles {
 		// tick_once(&bus.ppu)

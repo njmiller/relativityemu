@@ -5,6 +5,8 @@ import "core:log"
 // Code to implement some "mapper" chips by storing the info needed to determine
 // which PRG and CHR blocks are currently accessible to the NES.
 
+// PRG_BANK_SIZE :: 0x4000 // defines in ines.odin
+
 MapperInfo :: struct {
 	num:  int,
 	info: [10]int,
@@ -73,17 +75,38 @@ prg_read :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
 read_mapper_0 :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
 	nbanks := mi.info[0]
 	addr := addr - 0x8000
-	if nbanks == 1 && addr >= 0x4000 do addr = addr % 0x4000
+	if nbanks == 1 && addr >= PRG_BANK_SIZE do addr = addr % PRG_BANK_SIZE
 	return prg_rom[addr]
 }
 
 read_mapper_2 :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
 	addr: int = auto_cast addr - 0x8000
 
-	if addr < 0x4000 {
-		return prg_rom[0x4000 * mi.info[0] + addr]
+	if addr < PRG_BANK_SIZE {
+		return prg_rom[PRG_BANK_SIZE * mi.info[0] + addr]
 	} else {
-		addr = addr % 4000
-		return prg_rom[0x4000 * mi.info[1] + addr]
+		addr = addr % PRG_BANK_SIZE
+		return prg_rom[PRG_BANK_SIZE * mi.info[1] + addr]
 	}
+}
+
+chr_read :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
+	data: u8
+	switch mi.num {
+	case 0:
+		data = read_mapper_0_chr(chr_rom, mi, addr)
+	case 2:
+		data = read_mapper_2_chr(chr_rom, mi, addr)
+	case:
+		log.fatal("Unimplemented mapper.")
+	}
+	return data
+}
+
+read_mapper_0_chr :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
+	return chr_rom[addr]
+}
+
+read_mapper_2_chr :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
+	return chr_rom[addr]
 }

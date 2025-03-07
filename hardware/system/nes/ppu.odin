@@ -329,7 +329,7 @@ write_to_scroll :: proc(ppu: ^Ricoh2c02, data: u8) {
 }
 
 @(private)
-read_ppu_data :: proc(ppu: ^Ricoh2c02, mem_addr: u16) -> u8 {
+read_ppu_data :: proc(ppu: ^Ricoh2c02, mi: ^MapperInfo, mem_addr: u16) -> u8 {
 	// mem_addr := ppu.v.val
 
 	// Because for debugging output we don't want to increment addr on read
@@ -340,7 +340,7 @@ read_ppu_data :: proc(ppu: ^Ricoh2c02, mem_addr: u16) -> u8 {
 	case 0 ..= 0x1FFF:
 		// result = ppu.internal_data_buf
 		// ppu.internal_data_buf = ppu.chr_rom[mem_addr]
-		result = ppu.chr_rom[mem_addr]
+		result = chr_read(ppu.chr_rom, mi, mem_addr)
 	case 0x2000 ..= 0x2FFF:
 		// result = ppu.internal_data_buf
 		// ppu.internal_data_buf = ppu.vram[mirror_vram_addr(mem_addr, ppu.mirroring)]
@@ -369,7 +369,7 @@ read_ppu_data :: proc(ppu: ^Ricoh2c02, mem_addr: u16) -> u8 {
 }
 
 @(private)
-write_to_ppu_data :: proc(ppu: ^Ricoh2c02, mem_addr: u16, data: u8) {
+write_to_ppu_data :: proc(ppu: ^Ricoh2c02, mi: ^MapperInfo, mem_addr: u16, data: u8) {
 	// mem_addr := ppu.v.val
 
 	// increment_vram_addr(ppu)
@@ -440,7 +440,7 @@ mirror_vram_addr :: proc(mem_addr: u16, mirroring: Mirroring) -> u16 {
 // Code to tick once so that we can guarantee we hit every cycle in a scanline
 // https://www.nesdev.org/wiki/PPU_rendering
 // Evaluate everything we need to do for the cycle and then increment the value
-tick_once :: proc(ppu: ^Ricoh2c02) {
+tick_once :: proc(ppu: ^Ricoh2c02, mi: ^MapperInfo) {
 	// TODO: Clean up background tile loading and move stuff around to make
 	//       render and shifting in more natural places
 
@@ -481,7 +481,7 @@ tick_once :: proc(ppu: ^Ricoh2c02) {
 
 				// https://www.nesdev.org/wiki/PPU_scrolling#Tile_and_attribute_fetching
 				tile_addr := 0x2000 | (ppu.v.val & 0x0FFF)
-				ppu.tile_number = read_ppu_data(ppu, tile_addr)
+				ppu.tile_number = read_ppu_data(ppu, mi, tile_addr)
 			// if ppu.scanline == 90 && ppu.cycles > 90 && ppu.cycles < 120 {
 			// fmt.printf("TILES: %04d %04x %04d\n", ppu.cycles, tile_addr, ppu.tile_number)
 			// mem_addr: u16 = 0x216E
@@ -495,7 +495,7 @@ tick_once :: proc(ppu: ^Ricoh2c02) {
 			// }
 			case 3:
 				// https://www.nesdev.org/wiki/PPU_scrolling#Tile_and_attribute_fetching
-				//  Low 12 bits (1111 is from the 0x23C0) 
+				//  Low 12 bits (1111 is from the 0x23C0)
 				//  NN 1111 YYY XXX
 				//  || |||| ||| +++-- high 3 bits of coarse X (x/4)
 				//  || |||| +++------ high 3 bits of coarse Y (y/4)
@@ -506,7 +506,7 @@ tick_once :: proc(ppu: ^Ricoh2c02) {
 				nametable_y := ppu.v.nametable_y << 11
 				nametable_x := ppu.v.nametable_x << 10
 				attr_addr := 0x23C0 | nametable_y | nametable_x | coarse_y_3 | coarse_x_3
-				ppu.attr_data = read_ppu_data(ppu, attr_addr)
+				ppu.attr_data = read_ppu_data(ppu, mi, attr_addr)
 
 				// TODO: Need to understand this. Picking out 2 bits
 				// of the 8 bit number
@@ -521,13 +521,13 @@ tick_once :: proc(ppu: ^Ricoh2c02) {
 				// https://www.nesdev.org/wiki/PPU_pattern_tables (Addressing)
 				bg_base: u16 = 0x1000 if .BACKGROUND_PATTERN_ADDR in ppu.ctrl else 0x0000
 				patt_addr := bg_base | (u16(ppu.tile_number) << 4) | ppu.v.fine_y
-				ppu.pattern_table_low = read_ppu_data(ppu, patt_addr)
+				ppu.pattern_table_low = read_ppu_data(ppu, mi, patt_addr)
 			case 7:
 				// https://www.nesdev.org/wiki/PPU_pattern_tables (Addressing)
 				// offset by 8 for high pattern byte
 				bg_base: u16 = 0x1000 if .BACKGROUND_PATTERN_ADDR in ppu.ctrl else 0x0000
 				patt_addr := bg_base | (u16(ppu.tile_number) << 4) | ppu.v.fine_y + 0x8 // (also +8)
-				ppu.pattern_table_high = read_ppu_data(ppu, patt_addr)
+				ppu.pattern_table_high = read_ppu_data(ppu, mi, patt_addr)
 			// if ppu.scanline == 90 && ppu.cycles > 90 && ppu.cycles < 160 {
 			// fmt.printf("ABC: %04d %04d %04X\n", ppu.cycles, ppu.tile_number, patt_addr)
 			// }
@@ -560,7 +560,7 @@ tick_once :: proc(ppu: ^Ricoh2c02) {
 		// all within a single cycle
 		if ppu.cycles == 337 {
 			get_sprites_scanline(ppu)
-			load_sprite_shifters(ppu)
+			load_sprite_shifters(ppu, mi)
 			// if ppu.scanline == 179 {
 			// fmt.printf(
 			// "AFTER LOAD %08b %08b\n",
@@ -641,7 +641,7 @@ is_sprite_0_hit :: proc(ppu: ^Ricoh2c02, cycle: int) -> bool {
 	return .SHOW_SPRITES in ppu.mask && y == ppu.scanline && x <= cycle
 }
 
-write_ppu_register :: proc(ppu: ^Ricoh2c02, addr: u16, data: u8) {
+write_ppu_register :: proc(ppu: ^Ricoh2c02, mi: ^MapperInfo, addr: u16, data: u8) {
 	switch addr {
 	case 0x2000:
 		write_to_ctrl(ppu, data)
@@ -661,17 +661,17 @@ write_ppu_register :: proc(ppu: ^Ricoh2c02, addr: u16, data: u8) {
 		write_to_addr(ppu, data)
 	case 0x2007:
 		mem_addr := ppu.v.val
-		write_to_ppu_data(ppu, mem_addr, data)
+		write_to_ppu_data(ppu, mi, mem_addr, data)
 		increment_vram_addr(ppu)
 	case 0x2008 ..= PPU_REGISTERS_MIRRORS_END:
 		// Calculate what address this address mirrors and write
 		// to that address
 		mirror_down_addr := addr & 0b00100000_00000111
-		write_ppu_register(ppu, mirror_down_addr, data)
+		write_ppu_register(ppu, mi, mirror_down_addr, data)
 	}
 }
 
-read_ppu_register :: proc(ppu: ^Ricoh2c02, addr: u16) -> u8 {
+read_ppu_register :: proc(ppu: ^Ricoh2c02, mi: ^MapperInfo, addr: u16) -> u8 {
 	mem_val: u8
 	switch addr {
 	case 0x2000, 0x2001, 0x2003, 0x2005, 0x2006:
@@ -689,7 +689,7 @@ read_ppu_register :: proc(ppu: ^Ricoh2c02, addr: u16) -> u8 {
 	case 0x2007:
 		// mem_addr := ppu.v.val
 		mem_val = ppu.internal_data_buf
-		ppu.internal_data_buf = read_ppu_data(ppu, ppu.v.val)
+		ppu.internal_data_buf = read_ppu_data(ppu, mi, ppu.v.val)
 		// mem_val = read_ppu_data(ppu, mem_addr)
 		if context.user_index == 0 do increment_vram_addr(ppu)
 	case 0x2008 ..= PPU_REGISTERS_MIRRORS_END:
@@ -697,7 +697,7 @@ read_ppu_register :: proc(ppu: ^Ricoh2c02, addr: u16) -> u8 {
 		// read from that address instead
 		mirror_down_addr := addr & 0b00100000_00000111
 		// fmt.printf("Reading %04X %04x\n", addr, mirror_down_addr)
-		mem_val = read_ppu_register(ppu, mirror_down_addr)
+		mem_val = read_ppu_register(ppu, mi, mirror_down_addr)
 	}
 	return mem_val
 }
@@ -968,7 +968,7 @@ get_sprites_scanline :: proc(ppu: ^Ricoh2c02) {
 
 }
 
-load_sprite_shifters :: proc(ppu: ^Ricoh2c02) {
+load_sprite_shifters :: proc(ppu: ^Ricoh2c02, mi: ^MapperInfo) {
 	// Load the secondary OAM data into the foreground shifters
 
 	new_scanline := u8(ppu.scanline + 1)
@@ -1020,8 +1020,8 @@ load_sprite_shifters :: proc(ppu: ^Ricoh2c02) {
 		}
 
 		// High address is offset by 8
-		ppu.sprite_shift_lo[i] = read_ppu_data(ppu, addr_lo)
-		ppu.sprite_shift_hi[i] = read_ppu_data(ppu, addr_lo + 8)
+		ppu.sprite_shift_lo[i] = read_ppu_data(ppu, mi, addr_lo)
+		ppu.sprite_shift_hi[i] = read_ppu_data(ppu, mi, addr_lo + 8)
 
 		if flip_horizontal {
 			ppu.sprite_shift_lo[i] = bits.reverse_bits(ppu.sprite_shift_lo[i])
@@ -1053,13 +1053,13 @@ shift_sprite_shifters :: proc(ppu: ^Ricoh2c02) {
 
 // TODO: Use this function call instead of switch statement in tick_once
 //       Should be called once every 8 ticks.
-load_next_background_tile :: proc(ppu: ^Ricoh2c02) {
+load_next_background_tile :: proc(ppu: ^Ricoh2c02, mi: ^MapperInfo) {
 	// https://www.nesdev.org/wiki/PPU_scrolling#Tile_and_attribute_fetching
 	tile_addr := 0x2000 | (ppu.v.val & 0x0FFF)
-	ppu.tile_number = read_ppu_data(ppu, tile_addr)
+	ppu.tile_number = read_ppu_data(ppu, mi, tile_addr)
 
 	// https://www.nesdev.org/wiki/PPU_scrolling#Tile_and_attribute_fetching
-	//  Low 12 bits (1111 is from the 0x23C0) 
+	//  Low 12 bits (1111 is from the 0x23C0)
 	//  NN 1111 YYY XXX
 	//  || |||| ||| +++-- high 3 bits of coarse X (x/4)
 	//  || |||| +++------ high 3 bits of coarse Y (y/4)
@@ -1070,7 +1070,7 @@ load_next_background_tile :: proc(ppu: ^Ricoh2c02) {
 	nametable_y := ppu.v.nametable_y << 11
 	nametable_x := ppu.v.nametable_x << 10
 	attr_addr := 0x23C0 | nametable_y | nametable_x | coarse_y_3 | coarse_x_3
-	ppu.attr_data = read_ppu_data(ppu, attr_addr)
+	ppu.attr_data = read_ppu_data(ppu, mi, attr_addr)
 
 	// TODO: Need to understand this. Picking out 2 bits
 	// of the 8 bit number
@@ -1084,8 +1084,8 @@ load_next_background_tile :: proc(ppu: ^Ricoh2c02) {
 	// https://www.nesdev.org/wiki/PPU_pattern_tables (Addressing)
 	bg_base: u16 = 0x1000 if .BACKGROUND_PATTERN_ADDR in ppu.ctrl else 0x0000
 	patt_addr := bg_base | (u16(ppu.tile_number) << 4) | ppu.v.fine_y
-	ppu.pattern_table_low = read_ppu_data(ppu, patt_addr)
-	ppu.pattern_table_high = read_ppu_data(ppu, patt_addr + 8)
+	ppu.pattern_table_low = read_ppu_data(ppu, mi, patt_addr)
+	ppu.pattern_table_high = read_ppu_data(ppu, mi, patt_addr + 8)
 
 	load_bg_shifter_registers(ppu)
 	inc_horizontal_scroll(ppu)

@@ -1127,7 +1127,11 @@ undo_read :: proc(state: ^MOS6502, add_mode: AddressingMode) {
 
 emulate6502p :: proc(state: ^MOS6502, bus: ^Bus) -> int {
 
+	// fmt.print("PC: ", state.pc)
+
 	opcode: OpCode = auto_cast readImmediate8(state, bus)
+
+	// fmt.print(" ", opcode, "\n")
 
 	//Page boundary
 	state.ec = 0
