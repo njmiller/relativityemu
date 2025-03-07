@@ -13,6 +13,7 @@ TICKS_PER_SAMPLE: f64 : f64(CLOCK_SPEED * 1000.0) / f64(AUDIO_SAMPLE_RATE)
 TICKS_PER_FRAME: int : auto_cast CLOCK_SPEED * 1000 / 60
 
 BUFFER_SIZE :: 512
+TARGET_QUEUE_BYTES: int : auto_cast 3 * BUFFER_SIZE * size_of(f32)
 
 // NES APU Implementation
 APU :: struct {
@@ -332,7 +333,7 @@ clock_dmc :: proc(dmc: ^DMC) {
 			dmc.bits_remaining -= 1
 		}
 
-		// No else statement because we want it to possibly run after the previous statement 
+		// No else statement because we want it to possibly run after the previous statement
 		if dmc.bits_remaining == 0 do load_new_dmc_sample(dmc)
 	}
 }
@@ -602,25 +603,50 @@ tick_apu :: proc(apu: ^APU) {
 	// It would be around 40.5 samples so we need to take care of the fractions
 	if apu.sample_counter >= TICKS_PER_SAMPLE {
 		sample := get_sample(apu)
-		apu.buffer[apu.buf_idx] = sample
-		apu.buf_idx += 1
 
-		// sdl3.PutAudioStreamData(apu.audio, &sample, size_of(f32))
+		// Capture whether buffer was full on entry
+		was_full := (apu.buf_idx == BUFFER_SIZE)
 
-		// If we have filled up a seconds worth of data, send it to
-		// the audio device and reset the buffer index
-		if apu.buf_idx >= BUFFER_SIZE {
-			lenbuf: i32 = BUFFER_SIZE * size_of(f32)
-			buf := raw_data(apu.buffer)
+		if was_full {
+			// Buffer was already full - try to push first
+			queued_bytes: int = auto_cast sdl3.GetAudioStreamQueued(apu.audio)
+			chunk_bytes := BUFFER_SIZE * size_of(f32)
 
-			// TODO: Check if I can just take a pointer to the array
-			sdl3.PutAudioStreamData(apu.audio, buf, lenbuf)
-			apu.buf_idx = 0
-			// fmt.println("Putting Samples", apu.buffer[:25])
+			// Only push if adding this chunk won't overshoot our target
+			if queued_bytes <= TARGET_QUEUE_BYTES - chunk_bytes {
+				lenbuf: i32 = BUFFER_SIZE * size_of(f32)
+				buf := raw_data(apu.buffer)
+
+				sdl3.PutAudioStreamData(apu.audio, buf, lenbuf)
+				apu.buf_idx = 0
+			}
+			// If queue is above threshold, buf_idx stays at BUFFER_SIZE
 		}
 
+		// After push attempt (if any), write sample if space is available
+		if apu.buf_idx < BUFFER_SIZE {
+			apu.buffer[apu.buf_idx] = sample
+			apu.buf_idx += 1
+
+			// If we just filled the buffer (it wasn't full before this write),
+			// attempt to push
+			if !was_full && apu.buf_idx == BUFFER_SIZE {
+				queued_bytes: int = auto_cast sdl3.GetAudioStreamQueued(apu.audio)
+				chunk_bytes := BUFFER_SIZE * size_of(f32)
+
+				if queued_bytes <= TARGET_QUEUE_BYTES - chunk_bytes {
+					lenbuf: i32 = BUFFER_SIZE * size_of(f32)
+					buf := raw_data(apu.buffer)
+
+					sdl3.PutAudioStreamData(apu.audio, buf, lenbuf)
+					apu.buf_idx = 0
+				}
+				// No post-push write here - sample is already in the chunk we just pushed
+			}
+		}
+		// If buf_idx is still BUFFER_SIZE, we skip writing (preserving samples)
+
 		apu.sample_counter -= TICKS_PER_SAMPLE
-		// fmt.println("TEST", apu.buf_idx)
 	}
 }
 
