@@ -22,7 +22,10 @@ ROM :: struct {
 
 // read_ines :: proc(fn: string) -> ([]u8, []u8, u8, u8) {
 read_ines :: proc(fn: string) -> ROM {
-	data, success := os.read_entire_file_from_filename(fn)
+	data, err := os.read_entire_file(fn, context.allocator)
+	if err != nil {
+		log.fatalf("Could not read ROM file %v: %v", fn, err)
+	}
 	defer delete(data)
 
 	// Process the header
@@ -31,7 +34,6 @@ read_ines :: proc(fn: string) -> ROM {
 	INES1: u8 = 0b0000_0000
 	INES2: u8 = 0b0000_1000 //TODO: check last two bits
 
-	header := data[:16]
 	if !slice.equal(data[0:4], NES_TAG[:]) {
 		log.fatal("BAD HEADER")
 	}

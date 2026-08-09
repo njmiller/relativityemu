@@ -631,7 +631,7 @@ adc :: proc(state: ^MOS6502, bus: ^Bus, add_mode: AddressingMode) {
 	value, cy := bits.overflowing_add(state.a, m)
 
 	carry := state.status & CarryFlag != 0 ? 1 : 0
-	value2, cy2 := bits.overflowing_add(value, carry)
+	value2, cy2 := bits.overflowing_add(value, u8(carry))
 
 	state.status = setNegativeFlag(value2, state.status)
 	state.status = setZeroFlag(value2, state.status)
@@ -849,7 +849,7 @@ sbc :: proc(state: ^MOS6502, bus: ^Bus, add_mode: AddressingMode) {
 	value, cy := bits.overflowing_sub(state.a, m)
 	carry := state.status & CarryFlag != 0 ? 0 : 1
 
-	value2, cy2 := bits.overflowing_sub(value, carry)
+	value2, cy2 := bits.overflowing_sub(value, u8(carry))
 
 	state.status = setNegativeFlag(value2, state.status)
 	state.status = setZeroFlag(value2, state.status)

@@ -9,10 +9,18 @@ main :: proc() {
 	fn1 := os.args[1]
 	fn2 := os.args[2]
 
-	data1_tmp, success1 := os.read_entire_file_from_filename(fn1)
+	data1_tmp, err1 := os.read_entire_file(fn1, context.allocator)
+	if err1 != nil {
+		fmt.eprintln("Could not read", fn1, ":", err1)
+		os.exit(1)
+	}
 	data1 := strings.split_lines(auto_cast data1_tmp)
 
-	data2_tmp, success2 := os.read_entire_file_from_filename(fn2)
+	data2_tmp, err2 := os.read_entire_file(fn2, context.allocator)
+	if err2 != nil {
+		fmt.eprintln("Could not read", fn2, ":", err2)
+		os.exit(1)
+	}
 	data2 := strings.split_lines(auto_cast data2_tmp)
 
 	nlines := len(data1) - 1 // because of a newline at the end of the log file

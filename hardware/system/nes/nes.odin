@@ -248,6 +248,8 @@ calc_duration :: proc(sw: ^time.Stopwatch) -> i64 {
 run :: proc(nes: ^NES) {
 
 	sw: time.Stopwatch
+	num_cycles_tot: int = 0
+	
 
 	time.stopwatch_start(&sw)
 	for {
@@ -280,12 +282,31 @@ run :: proc(nes: ^NES) {
 
 		// Do some calculation based on the time to execute the instruction and time it would
 		// take NES to execute the instruction and sleep to match up
-		dur := calc_duration(&sw)
+		/* dur := calc_duration(&sw)
 		ns_per_cycle := 558.6592
 		time_to_sleep: int = auto_cast (f64(num_cycles) * ns_per_cycle - f64(dur))
 		// time.accurate_sleep(4000) // nanoseconds
 		time.accurate_sleep(auto_cast time_to_sleep)
 		calc_duration(&sw) // need to reset stopwatch after sleep
+		*/
+		
+		// Do some calculation based on the time it would take the NES to execute
+		// the instruction. Keep track across multiple instructions and
+		// sleep when the time crosses a certain threshold.
+		num_cycles_tot += num_cycles
+		ns_per_cycle := 558.6592
+		time_cycles : int = auto_cast(f64(num_cycles_tot) * ns_per_cycle)
+		if time_cycles > 1_000_000 {
+			// This resets the stopwatch so we only call it when we need to sleep. 
+			// Otherwise we would be resetting it every instruction and losing the
+			// cumulative time across instructions.
+			dur := calc_duration(&sw)
+
+			time_to_sleep: int = auto_cast (f64(num_cycles_tot) * ns_per_cycle - f64(dur))
+			time.accurate_sleep(auto_cast time_to_sleep)
+			calc_duration(&sw) // need to reset stopwatch after sleep
+			num_cycles_tot = 0 // reset the total number of cycles after sleeping
+		}
 	}
 }
 
