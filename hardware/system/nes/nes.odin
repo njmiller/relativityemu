@@ -181,6 +181,8 @@ reset :: proc(nes: ^NES) {
 	nes.cpu6502.status = 0x24 // TODO: Check this
 	nes.cpu6502.ec = 0
 
+	reset_apu(&nes.bus.apu)
+
 	// Reset the joypad status
 	nes.bus.jp1.button_index = 0
 	nes.bus.jp1.strobe = false
