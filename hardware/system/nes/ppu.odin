@@ -8,6 +8,8 @@ Mirroring :: enum {
 	VERTICAL,
 	HORIZONTAL,
 	FOUR_SCREEN,
+	ONE_SCREEN_LOWER,
+	ONE_SCREEN_UPPER,
 }
 
 // Bit field internal types are u16 because they are
@@ -27,6 +29,7 @@ PPUReg :: struct #raw_union {
 
 Ricoh2c02 :: struct {
 	chr_rom:            []u8,
+	mapper:             ^MapperInfo,
 	palette_table:      [32]u8,
 	vram:               [2048]u8,
 	oam_data:           [256]u8,
@@ -340,7 +343,7 @@ read_ppu_data :: proc(ppu: ^Ricoh2c02, mem_addr: u16) -> u8 {
 	case 0 ..= 0x1FFF:
 		// result = ppu.internal_data_buf
 		// ppu.internal_data_buf = ppu.chr_rom[mem_addr]
-		result = ppu.chr_rom[mem_addr]
+		result = ppu.chr_rom[chr_offset(ppu.chr_rom, ppu.mapper, mem_addr)]
 	case 0x2000 ..= 0x2FFF:
 		// result = ppu.internal_data_buf
 		// ppu.internal_data_buf = ppu.vram[mirror_vram_addr(mem_addr, ppu.mirroring)]
@@ -376,7 +379,7 @@ write_to_ppu_data :: proc(ppu: ^Ricoh2c02, mem_addr: u16, data: u8) {
 
 	switch mem_addr {
 	case 0 ..= 0x1FFF:
-		if ppu.is_chr_ram do ppu.chr_rom[mem_addr] = data
+		if ppu.is_chr_ram do ppu.chr_rom[chr_offset(ppu.chr_rom, ppu.mapper, mem_addr)] = data
 		else do log.warn("Trying to write to CHR Rom")
 	case 0x2000 ..= 0x2FFF:
 		mem_addr_mirror := mirror_vram_addr(mem_addr, ppu.mirroring)
@@ -391,13 +394,15 @@ write_to_ppu_data :: proc(ppu: ^Ricoh2c02, mem_addr: u16, data: u8) {
 	// Note that this goes for writing as well as reading. A symptom of not having implemented
 	//  this correctly in an emulator is the sky being black in Super Mario Bros., which writes
 	//  the backdrop color through $3F10.
+	// Palette RAM is only 6 bits wide, so the top two bits of the written value
+	// are discarded. Masking here keeps every entry a valid SYSTEM_PALETTE index
 	case 0x3F10, 0x3F14, 0x3F18, 0x3F1C:
 		add_mirror := mem_addr - 0x10
-		ppu.palette_table[(add_mirror - 0x3F00)] = data
+		ppu.palette_table[(add_mirror - 0x3F00)] = data & 0x3F
 	case 0x3F00 ..= 0x3FFF:
 		// palette table data goes from 0x3F00 to 0x3F1F and then is mirrored all the way to 0x3FFF
 		add_mirror := (mem_addr - 0x3F00) % 0x20
-		ppu.palette_table[add_mirror] = data
+		ppu.palette_table[add_mirror] = data & 0x3F
 	case:
 		log.panic("Unexpected access to mirrored space:", mem_addr)
 	}
@@ -432,6 +437,10 @@ mirror_vram_addr :: proc(mem_addr: u16, mirroring: Mirroring) -> u16 {
 		}
 	case .FOUR_SCREEN:
 		log.warn("FOUR SCREEN Mirroring not implemented yet.")
+	case .ONE_SCREEN_LOWER:
+		mem_addr_out = vram_idx % 0x400
+	case .ONE_SCREEN_UPPER:
+		mem_addr_out = 0x400 + (vram_idx % 0x400)
 	}
 
 	return mem_addr_out

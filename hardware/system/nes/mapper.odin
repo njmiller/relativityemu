@@ -13,14 +13,14 @@ MapperInfo :: struct {
 }
 
 // Call the different mapper routines implemented in the mapper package.
-update_mi :: proc(mi: ^MapperInfo, addr: u16, data: u8) {
+update_mi :: proc(mi: ^MapperInfo, ppu: ^Ricoh2c02, addr: u16, data: u8) {
 	// delete(bus.prg_rom)
 
 	switch mi.num {
 	case 0:
 		update_mapper_0()
 	case 1:
-		update_mapper_1(mi, addr, data)
+		update_mapper_1(mi, ppu, addr, data)
 	case 2:
 		update_mapper_2(mi, data)
 	case:
@@ -32,7 +32,7 @@ update_mapper_0 :: proc() {
 	log.fatal("Trying to write to PRG RAM in Mapper 0")
 }
 
-update_mapper_1 :: proc(mi: ^MapperInfo, addr: u16, data: u8) {
+update_mapper_1 :: proc(mi: ^MapperInfo, ppu: ^Ricoh2c02, addr: u16, data: u8) {
 	// MMC1 shift register protocol only applies to $8000-$FFFF
 	// Ignore writes to $6000-$7FFF (PRG RAM)
 	if addr < 0x8000 do return
@@ -68,6 +68,18 @@ update_mapper_1 :: proc(mi: ^MapperInfo, addr: u16, data: u8) {
 		case 0x0000:
 			// $8000-$9FFF - Control register (5 bits)
 			mi.info[2] = shift_val & 0x1F
+
+			// Bits 1:0 select the nametable mirroring
+			switch shift_val & 0x03 {
+			case 0:
+				ppu.mirroring = .ONE_SCREEN_LOWER
+			case 1:
+				ppu.mirroring = .ONE_SCREEN_UPPER
+			case 2:
+				ppu.mirroring = .VERTICAL
+			case 3:
+				ppu.mirroring = .HORIZONTAL
+			}
 		case 0x2000:
 			// $A000-$BFFF - CHR Bank 0 (5 bits)
 			mi.info[3] = shift_val & 0x1F
@@ -128,7 +140,7 @@ init_mapper_1 :: proc(mi: ^MapperInfo, nprg: int) {
 }
 
 init_mapper_2 :: proc(mi: ^MapperInfo, nprg: int) {
-	// FOr Mapper 2, store the current bank in the first element
+	// For Mapper 2, store the current bank in the first element
 	// and the number of the last bank in the second element
 	mi.info[0] = 0
 	mi.info[1] = nprg - 1
@@ -217,26 +229,19 @@ read_mapper_2 :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
 	}
 }
 
-chr_read :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
-	data: u8
+// Convert a PPU pattern table address into an index into the CHR data. Used by
+// both the reads and the CHR RAM writes so they always agree on the banking.
+chr_offset :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> int {
 	switch mi.num {
-	case 0:
-		data = read_mapper_0_chr(chr_rom, mi, addr)
 	case 1:
-		data = read_mapper_1_chr(chr_rom, mi, addr)
-	case 2:
-		data = read_mapper_2_chr(chr_rom, mi, addr)
+		return offset_mapper_1_chr(chr_rom, mi, addr)
 	case:
-		log.fatal("Unimplemented mapper.")
+		// Mappers 0 and 2 have no CHR banking
+		return int(addr)
 	}
-	return data
 }
 
-read_mapper_0_chr :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
-	return chr_rom[addr]
-}
-
-read_mapper_1_chr :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
+offset_mapper_1_chr :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> int {
 	// Extract CHR mode from Control register (bit 4)
 	chr_mode := (mi.info[2] >> 4) & 0x01
 
@@ -271,9 +276,5 @@ read_mapper_1_chr :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
 		}
 	}
 
-	return chr_rom[rom_addr]
-}
-
-read_mapper_2_chr :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
-	return chr_rom[addr]
+	return rom_addr
 }

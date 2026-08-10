@@ -105,7 +105,7 @@ bus_mem_write :: proc(bus: ^mos6502.Bus, addr: u16, data: u8) {
 	case 0x8000 ..= 0xFFFF:
 		// This is where I would need to implement mapper stuff
 		// log.fatal("Attempting to write to a cartridge ROM space.")
-		update_mi(&bus.mapper, addr, data)
+		update_mi(&bus.mapper, &bus.ppu, addr, data)
 	case:
 		fmt.println("Ignoring mem write-access at", addr)
 	}
@@ -153,6 +153,9 @@ init_nes :: proc(fn: string) -> ^NES {
 
 	nes.bus.ppu.chr_rom = rom.chr_rom
 	nes.bus.ppu.mirroring = rom.mirroring
+
+	// The PPU needs the mapper to know which CHR bank is currently accessible
+	nes.bus.ppu.mapper = &nes.bus.mapper
 
 	// APU DMC needs ability to read memory
 	nes.bus.apu.dmc.bus = &nes.bus
