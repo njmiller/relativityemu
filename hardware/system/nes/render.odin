@@ -3,6 +3,7 @@ package nes
 import "core:fmt"
 import "core:log"
 import "core:mem"
+import "core:slice"
 
 // import rl "vendor:raylib"
 import "vendor:sdl3"
@@ -232,19 +233,19 @@ render_image :: proc(colors: []u8, ri: ^RenderInfo) {
 	sdl3.RenderClear(renderer)
 
 	pitch: i32 = FRAME_WIDTH * 3
-	// pixels: []u8
 
-	npix :: FRAME_HEIGHT * FRAME_WIDTH * 3
-	pixels := make([]u8, npix)
-	// defer delete(pixels)
+	// LockTexture hands back the texture's own pixel memory, so there is
+	// nothing to allocate here
+	raw_pixels: rawptr
+	succt := sdl3.LockTexture(texture, nil, &raw_pixels, &pitch)
 
-	succt := sdl3.LockTexture(texture, nil, auto_cast &pixels, &pitch)
+	pixels := slice.from_ptr(cast(^u8)raw_pixels, int(pitch) * FRAME_HEIGHT)
 
 	// copy frame.data to pixels
 	for i in 0 ..< FRAME_HEIGHT {
 		for j in 0 ..< FRAME_WIDTH {
 			idx_orig := FRAME_WIDTH * i + j
-			idx_dest := 3 * idx_orig
+			idx_dest := int(pitch) * i + 3 * j
 			idx_palette := colors[idx_orig]
 			// if i == 180 || j == 50 || j == 129 do idx_palette = 0
 			// idx_palette := i % 64
@@ -355,7 +356,7 @@ render_background :: proc(ppu: ^Ricoh2c02, frame: ^Frame) {
 			main_nametable = ppu.vram[0x400:0x800]
 			second_nametable = ppu.vram[0:0x400]
 		}
-	case .FOUR_SCREEN:
+	case .FOUR_SCREEN, .ONE_SCREEN_LOWER, .ONE_SCREEN_UPPER:
 		log.panic("Not supported mirroring type:", ppu.mirroring)
 	}
 
