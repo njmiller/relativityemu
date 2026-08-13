@@ -154,10 +154,10 @@ init_nes :: proc(fn: string) -> ^NES {
 	// nes.bus.mapper = rom.mapper 
 	nes.bus.prg_rom = rom.prg_rom
 	nes.bus.prg_ram = make([]u8, 8192)
-	nes.bus.save_path = save_path_for_rom(fn)
 	if rom.has_battery {
+		nes.bus.save_path = save_path_for_rom(fn)
 		load_sram(&nes.bus)
-	}
+	} else do nes.bus.save_path = ""
 
 	nes.bus.ppu.chr_rom = rom.chr_rom
 	nes.bus.ppu.mirroring = rom.mirroring
