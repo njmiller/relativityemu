@@ -69,7 +69,6 @@ bus_mem_read :: proc(bus: ^mos6502.Bus, addr: u16) -> u8 {
 		mem_val = read_apu_register(&bus.apu, addr)
 	case 0x6000 ..= 0x7FFF:
 		mem_val = bus.prg_ram[addr - 0x6000]
-		bus.prg_ram_dirty = true
 	case 0x8000 ..= 0xFFFF:
 		// mem_val = bus.prg_rom[addr - 0x8000]
 		mem_val = prg_read(bus.prg_rom, &bus.mapper, addr)
@@ -106,6 +105,7 @@ bus_mem_write :: proc(bus: ^mos6502.Bus, addr: u16, data: u8) {
 		write_apu_register(&bus.apu, addr, data)
 	case 0x6000 ..= 0x7FFF:
 		bus.prg_ram[addr - 0x6000] = data
+		bus.prg_ram_dirty = true
 	case 0x8000 ..= 0xFFFF:
 		// This is where I would need to implement mapper stuff
 		// log.fatal("Attempting to write to a cartridge ROM space.")
@@ -263,7 +263,8 @@ run :: proc(nes: ^NES) {
 	sw: time.Stopwatch
 	num_cycles_tot: int = 0
 	save_accum_cycles : int = 0
-	
+	nmi_pending := false
+
 
 	time.stopwatch_start(&sw)
 	for {
@@ -276,8 +277,14 @@ run :: proc(nes: ^NES) {
 		}
 		// check_input2(&nes.bus.jp2)
 
-		// Check for NMI before executing each instruction
-		if poll_nmi_status(&nes.bus) do interrupt_nmi(&nes.cpu6502, &nes.bus)
+		// The PPU is ticked after each instruction, so an NMI it raises belongs to
+		// the middle of the instruction that gets executed next. The CPU always
+		// finishes that instruction before servicing the interrupt, which is what
+		// lets a loop polling 0x2002 see the vblank flag before the NMI handler
+		// gets a chance to clear it.
+		take_nmi := nmi_pending
+		nmi_pending = poll_nmi_status(&nes.bus)
+		if take_nmi do interrupt_nmi(&nes.cpu6502, &nes.bus)
 
 		when ODIN_DEBUG {
 			mos6502.disassemble6502p_ver2(&nes.cpu6502, &nes.bus)

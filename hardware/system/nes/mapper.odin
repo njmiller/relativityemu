@@ -109,7 +109,7 @@ init_mapper :: proc(mapper_num: int, mi: ^MapperInfo, nprg: int, nchr: int) {
 	case 0:
 		init_mapper_0(mi, nprg)
 	case 1:
-		init_mapper_1(mi, nprg)
+		init_mapper_1(mi, nprg, nchr)
 	case 2:
 		init_mapper_2(mi, nprg)
 	}
@@ -121,7 +121,7 @@ init_mapper_0 :: proc(mi: ^MapperInfo, nprg: int) {
 	mi.info[0] = nprg
 }
 
-init_mapper_1 :: proc(mi: ^MapperInfo, nprg: int) {
+init_mapper_1 :: proc(mi: ^MapperInfo, nprg: int, nchr: int) {
 	// For Mapper 1 (MMC1), initialize shift register and internal registers
 	// info[0]: Shift register accumulated value (initially 0)
 	// info[1]: Shift register write count (initially 0)
@@ -130,6 +130,7 @@ init_mapper_1 :: proc(mi: ^MapperInfo, nprg: int) {
 	// info[4]: CHR Bank 1 register (initially 0)
 	// info[5]: PRG Bank register (initially 0)
 	// info[6]: Number of PRG banks (for boundary checking)
+	// info[7]: Number of CHR banks (0 means the cart has CHR RAM)
 	mi.info[0] = 0
 	mi.info[1] = 0
 	mi.info[2] = 0x0C
@@ -137,6 +138,7 @@ init_mapper_1 :: proc(mi: ^MapperInfo, nprg: int) {
 	mi.info[4] = 0
 	mi.info[5] = 0
 	mi.info[6] = nprg
+	mi.info[7] = nchr
 }
 
 init_mapper_2 :: proc(mi: ^MapperInfo, nprg: int) {
@@ -183,35 +185,45 @@ read_mapper_1 :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
 		return prg_rom[offset % PRG_BANK_SIZE]
 	}
 
+	// The PRG bank register is only 4 bits, so it can address at most 256KB.
+	// On 512KB carts (SUROM) bit 4 of CHR Bank 0 drives PRG A18 and selects which
+	// 256KB block the register indexes into. block_base is the first 16KB bank of
+	// that block and banks is how many banks the register can reach inside it.
+	block_base := 0
+	banks := nprg
+	if nprg > 16 {
+		block_base = ((mi.info[3] >> 4) & 0x01) * 16
+		banks = 16
+	}
+
 	rom_addr: int
 
 	switch prg_mode {
 	case 0, 1:
 		// Mode 0 or 1: 32KB mode
 		// Ignore bit 0 of prg_bank, mask to available banks
-		prg_bank_u32: u32 = auto_cast prg_bank
-		not1: u32 = auto_cast ~u32(1)
-		base := (prg_bank_u32 & not1) & u32(nprg - 1)
-		rom_addr = int(base) * PRG_BANK_SIZE + offset
+		bank := block_base + ((prg_bank &~ 1) & (banks - 1))
+		rom_addr = bank * PRG_BANK_SIZE + offset
 	case 2:
 		// Mode 2: Fix first 16KB at $8000, switch 16KB at $C000
 		if offset < PRG_BANK_SIZE {
-			// $8000-$BFFF: Use bank 0
-			rom_addr = offset
+			// $8000-$BFFF: Use the first bank of the current block
+			rom_addr = block_base * PRG_BANK_SIZE + offset
 		} else {
 			// $C000-$FFFF: Use switchable bank (masked to available banks)
-			bank := prg_bank & (nprg - 1)
+			bank := block_base + (prg_bank & (banks - 1))
 			rom_addr = bank * PRG_BANK_SIZE + (offset - PRG_BANK_SIZE)
 		}
 	case 3:
 		// Mode 3: Fix last 16KB at $C000, switch 16KB at $8000
 		if offset < PRG_BANK_SIZE {
 			// $8000-$BFFF: Use switchable bank (masked to available banks)
-			bank := prg_bank & (nprg - 1)
+			bank := block_base + (prg_bank & (banks - 1))
 			rom_addr = bank * PRG_BANK_SIZE + offset
 		} else {
-			// $C000-$FFFF: Use last bank
-			rom_addr = (nprg - 1) * PRG_BANK_SIZE + (offset - PRG_BANK_SIZE)
+			// $C000-$FFFF: Use the last bank of the current block
+			bank := block_base + banks - 1
+			rom_addr = bank * PRG_BANK_SIZE + (offset - PRG_BANK_SIZE)
 		}
 	}
 
@@ -242,6 +254,11 @@ chr_offset :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> int {
 }
 
 offset_mapper_1_chr :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> int {
+	// Carts with CHR RAM only ever have 8KB of it and the MMC1 CHR outputs are not
+	// wired to it, so the PPU addresses it directly. On 512KB PRG carts bit 4 of the
+	// CHR register drives PRG A18 instead, so it must not shift the CHR window here.
+	if mi.info[7] == 0 do return int(addr)
+
 	// Extract CHR mode from Control register (bit 4)
 	chr_mode := (mi.info[2] >> 4) & 0x01
 

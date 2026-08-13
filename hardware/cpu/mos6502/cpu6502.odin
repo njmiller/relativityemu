@@ -616,8 +616,22 @@ setOverflowFlag :: proc(val1: u8, val2: u8, sum: u8, flagsIn: u8) -> u8 {
 	return flagsOut
 }
 
-brk :: proc(state: ^MOS6502) {
-	state.status = state.status | BreakCommand
+brk :: proc(state: ^MOS6502, bus: ^Bus) {
+	// BRK is a two byte instruction. The opcode has already been read so the
+	// return address that gets pushed is one past the current PC, which leaves
+	// the byte after the opcode free to be used as a signature by the handler.
+	high, low := getHighLow(u16(state.pc + 1))
+	pushR(high, low, state, bus)
+
+	// The pushed status has both the break flags set, but neither of them
+	// actually exists in the register itself.
+	push8(state.status | BreakCommand | BreakCommand2, state, bus)
+	setFlag(state, InterruptDisable)
+
+	low_irq := bus.read(bus, 0xFFFE)
+	high_irq := bus.read(bus, 0xFFFF)
+
+	state.pc = auto_cast getCombined(high_irq, low_irq)
 }
 
 adc :: proc(state: ^MOS6502, bus: ^Bus, add_mode: AddressingMode) {
@@ -1137,7 +1151,7 @@ emulate6502p :: proc(state: ^MOS6502, bus: ^Bus) -> int {
 
 	switch opcode {
 	case .BRK:
-		brk(state)
+		brk(state, bus)
 	case .ADC_IM, .ADC_ZP, .ADC_ZPX, .ADC_A, .ADC_AX, .ADC_AY, .ADC_IX, .ADC_IY:
 		adc(state, bus, opCodeInfo.add_mode)
 	case .AND_IM, .AND_ZP, .AND_ZPX, .AND_A, .AND_AX, .AND_AY, .AND_IX, .AND_IY:
