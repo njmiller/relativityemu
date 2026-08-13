@@ -18,6 +18,7 @@ ROM :: struct {
 	nprg_banks: int,
 	nchr_banks: int,
 	is_chr_ram: bool,
+	has_battery: bool,
 }
 
 // read_ines :: proc(fn: string) -> ([]u8, []u8, u8, u8) {
@@ -110,7 +111,7 @@ read_ines :: proc(fn: string) -> ROM {
 	if mirroring == 1 do mirroring2 = .VERTICAL
 	if mirroring == 2 do mirroring2 = .FOUR_SCREEN
 
-	rom := ROM{prg_rom, chr_rom, mapper, mirroring2, num_16, num_8, is_chr_ram}
+	rom := ROM{prg_rom, chr_rom, mapper, mirroring2, num_16, num_8, is_chr_ram, has_battery}
 
 	return rom
 	// return prg_rom, chr_rom, mapper, mirroring

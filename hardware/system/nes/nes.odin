@@ -10,6 +10,7 @@ import "hardware:cpu/mos6502"
 
 
 CLOCK_SPEED: u64 : 1789 // KHz
+SAVE_INTERVAL_CYCLES :: 5 * 1789 * 1000
 
 RenderInfo :: struct {
 	renderer: ^sdl3.Renderer,
@@ -30,6 +31,8 @@ Bus :: struct {
 	jp2:       JoyPad,
 	ri:        RenderInfo,
 	rom:       ROM,
+	save_path: string, // "" when the cart has no battery; disables all save I/O
+	prg_ram_dirty: bool,
 }
 
 NES :: struct {
@@ -66,6 +69,7 @@ bus_mem_read :: proc(bus: ^mos6502.Bus, addr: u16) -> u8 {
 		mem_val = read_apu_register(&bus.apu, addr)
 	case 0x6000 ..= 0x7FFF:
 		mem_val = bus.prg_ram[addr - 0x6000]
+		bus.prg_ram_dirty = true
 	case 0x8000 ..= 0xFFFF:
 		// mem_val = bus.prg_rom[addr - 0x8000]
 		mem_val = prg_read(bus.prg_rom, &bus.mapper, addr)
@@ -150,6 +154,10 @@ init_nes :: proc(fn: string) -> ^NES {
 	// nes.bus.mapper = rom.mapper 
 	nes.bus.prg_rom = rom.prg_rom
 	nes.bus.prg_ram = make([]u8, 8192)
+	nes.bus.save_path = save_path_for_rom(fn)
+	if rom.has_battery {
+		load_sram(&nes.bus)
+	}
 
 	nes.bus.ppu.chr_rom = rom.chr_rom
 	nes.bus.ppu.mirroring = rom.mirroring
@@ -254,6 +262,7 @@ run :: proc(nes: ^NES) {
 
 	sw: time.Stopwatch
 	num_cycles_tot: int = 0
+	save_accum_cycles : int = 0
 	
 
 	time.stopwatch_start(&sw)
@@ -261,8 +270,10 @@ run :: proc(nes: ^NES) {
 
 		// Check for input and update the joypad structure every loop
 		ex := check_input1(&nes.bus.jp1)
-		if ex == -1 do return
-
+		if ex == -1 {
+			save_sram(&nes.bus)
+			return
+		}
 		// check_input2(&nes.bus.jp2)
 
 		// Check for NMI before executing each instruction
@@ -284,6 +295,13 @@ run :: proc(nes: ^NES) {
 		// Tick the APU and PPU by a number of cycles based off the number of cycles
 		// of the CPU
 		tick(&nes.bus, num_cycles)
+
+		// Increment the save counter and attempt to save if it is above the threshold
+		save_accum_cycles += num_cycles
+		if save_accum_cycles >= SAVE_INTERVAL_CYCLES {
+			save_sram(&nes.bus)
+			save_accum_cycles = 0
+		}
 
 		// Do some calculation based on the time to execute the instruction and time it would
 		// take NES to execute the instruction and sleep to match up
