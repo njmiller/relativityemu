@@ -8,3 +8,4 @@ ols.json
 *.dll
 *.nes
 *.bin
+save/
