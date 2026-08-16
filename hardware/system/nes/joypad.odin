@@ -74,12 +74,14 @@ check_input1b :: proc(jp1: ^JoyPad, jp2: ^JoyPad, keymap: map[sdl3.Scancode]Butt
 	return -1
 }
 
-check_input1 :: proc(jp: ^JoyPad) -> int {
+check_input1 :: proc(jp: ^JoyPad, fast_forward: ^bool) -> int {
 	event: sdl3.Event
 	for sdl3.PollEvent(&event) {
 		#partial switch event.type {
 		case .QUIT:
 			return -1
+		case .WINDOW_FOCUS_LOST:
+			fast_forward^ = false
 		case .KEY_DOWN:
 			#partial switch event.key.scancode {
 			// case sdl3.SCANCODE_A:
@@ -99,6 +101,8 @@ check_input1 :: proc(jp: ^JoyPad) -> int {
 				jp.button_status += {.SELECT}
 			case .RETURN:
 				jp.button_status += {.START}
+			case .TAB:
+				fast_forward^ = true
 			case .ESCAPE:
 				return -1
 			}
@@ -120,6 +124,8 @@ check_input1 :: proc(jp: ^JoyPad) -> int {
 				jp.button_status -= {.SELECT}
 			case .RETURN:
 				jp.button_status -= {.START}
+			case .TAB:
+				fast_forward^ = false
 			}
 		}
 	}

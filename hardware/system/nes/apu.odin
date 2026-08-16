@@ -66,6 +66,9 @@ APU :: struct {
 	// Frame counter IRQ flag. Reported in bit 6 of $4015. The 6502 core has
 	// no IRQ line implemented yet, so nothing is asserted from this
 	frame_interrupt:    bool,
+
+	// Speed number for whether we are fast forwarding or not
+	speed:				f64,
 }
 
 LengthCounter :: struct {
@@ -675,9 +678,12 @@ tick_apu :: proc(apu: ^APU) {
 	apu.sample_sum += get_sample(apu)
 	apu.sample_num += 1
 
+	ticks_per_sample := TICKS_PER_SAMPLE * apu.speed
+
 	// CPU runs at 1.789 MHz and we want to generate samples at AUDIO_SAMPLE_RATE
 	// It would be around 40.5 samples so we need to take care of the fractions
-	if apu.sample_counter >= TICKS_PER_SAMPLE {
+	// if apu.sample_counter >= TICKS_PER_SAMPLE {
+	if apu.sample_counter >= ticks_per_sample {
 		raw := apu.sample_sum / apu.sample_num
 		apu.sample_sum = 0
 		apu.sample_num = 0
@@ -706,7 +712,7 @@ tick_apu :: proc(apu: ^APU) {
 			// fmt.println("Putting Samples", apu.buffer[:25])
 		}
 
-		apu.sample_counter -= TICKS_PER_SAMPLE
+		apu.sample_counter -= ticks_per_sample
 		// fmt.println("TEST", apu.buf_idx)
 	}
 }
@@ -741,4 +747,7 @@ init_audio :: proc(apu: ^APU) {
 	apu.buf_idx = 0
 
 	// apu.triangle.enabled = true
+
+	// Normal (not fast-forward) speed
+	apu.speed = 1.0
 }

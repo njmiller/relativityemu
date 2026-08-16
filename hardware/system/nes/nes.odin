@@ -11,6 +11,10 @@ import "hardware:cpu/mos6502"
 
 CLOCK_SPEED: u64 : 1789 // KHz
 SAVE_INTERVAL_CYCLES :: 5 * 1789 * 1000
+FAST_FORWARD_SPEED :: 4.0
+
+// CPU cycles in one NES frame, used to pace how often SDL input is polled
+INPUT_POLL_CYCLES :: 29780
 
 RenderInfo :: struct {
 	renderer: ^sdl3.Renderer,
@@ -33,6 +37,12 @@ Bus :: struct {
 	rom:       ROM,
 	save_path: string, // "" when the cart has no battery; disables all save I/O
 	prg_ram_dirty: bool,
+
+	// Emulated frames arrive at 60 * speed per second, so presenting one in
+	// every "speed" of them holds the display at roughly 60 FPS no matter how
+	// fast the emulation is running. 1 at normal speed presents every frame
+	frame_counter:      int,
+	frames_per_present: int,
 }
 
 NES :: struct {
@@ -244,7 +254,11 @@ tick :: proc(bus: ^Bus, ncycles: int) {
 		// render_background(&bus.ppu, &bus.ppu.frame)
 		// render_sprites(&bus.ppu, &bus.ppu.frame)
 		// render_frame_texture(&bus.ppu.frame, &bus.ri)
-		render_image(bus.ppu.image[:], &bus.ri)
+		bus.frame_counter += 1
+		if bus.frame_counter >= bus.frames_per_present {
+			render_image(bus.ppu.image[:], &bus.ri)
+			bus.frame_counter = 0
+		}
 	}
 }
 
@@ -264,18 +278,15 @@ run :: proc(nes: ^NES) {
 	num_cycles_tot: int = 0
 	save_accum_cycles : int = 0
 	nmi_pending := false
-
+	fast_forward := false
+	input_accum_cycles := 0
 
 	time.stopwatch_start(&sw)
 	for {
 
-		// Check for input and update the joypad structure every loop
-		ex := check_input1(&nes.bus.jp1)
-		if ex == -1 {
-			save_sram(&nes.bus)
-			return
-		}
-		// check_input2(&nes.bus.jp2)
+		speed := FAST_FORWARD_SPEED if fast_forward else 1.0
+		nes.bus.apu.speed = speed
+		nes.bus.frames_per_present = auto_cast speed
 
 		// The PPU is ticked after each instruction, so an NMI it raises belongs to
 		// the middle of the instruction that gets executed next. The CPU always
@@ -303,6 +314,20 @@ run :: proc(nes: ^NES) {
 		// of the CPU
 		tick(&nes.bus, num_cycles)
 
+		// Polling SDL pumps the OS event loop, which costs roughly a microsecond
+		// on macOS. Doing that once per instruction dominated the run time and
+		// held the emulator to about 1.1x. Once per frame is also when a real
+		// console latches the controller, so nothing is lost by waiting
+		input_accum_cycles += num_cycles
+		if input_accum_cycles >= INPUT_POLL_CYCLES {
+			ex := check_input1(&nes.bus.jp1, &fast_forward)
+			if ex == -1 {
+				save_sram(&nes.bus)
+				return
+			}
+			input_accum_cycles = 0
+		}
+
 		// Increment the save counter and attempt to save if it is above the threshold
 		save_accum_cycles += num_cycles
 		if save_accum_cycles >= SAVE_INTERVAL_CYCLES {
@@ -325,14 +350,17 @@ run :: proc(nes: ^NES) {
 		// sleep when the time crosses a certain threshold.
 		num_cycles_tot += num_cycles
 		ns_per_cycle := 558.6592
-		time_cycles : int = auto_cast(f64(num_cycles_tot) * ns_per_cycle)
-		if time_cycles > 1_000_000 {
+		// time_cycles : int = auto_cast(f64(num_cycles_tot) * ns_per_cycle)
+		real_ns := f64(num_cycles_tot) * ns_per_cycle / speed
+		// if time_cycles > 1_000_000 {
+		if real_ns > 1_000_000 {
 			// This resets the stopwatch so we only call it when we need to sleep. 
 			// Otherwise we would be resetting it every instruction and losing the
 			// cumulative time across instructions.
 			dur := calc_duration(&sw)
 
-			time_to_sleep: int = auto_cast (f64(num_cycles_tot) * ns_per_cycle - f64(dur))
+			// time_to_sleep: int = auto_cast (f64(num_cycles_tot) * ns_per_cycle - f64(dur))
+			time_to_sleep: int = auto_cast(real_ns - f64(dur))
 			time.accurate_sleep(auto_cast time_to_sleep)
 			calc_duration(&sw) // need to reset stopwatch after sleep
 			num_cycles_tot = 0 // reset the total number of cycles after sleeping
