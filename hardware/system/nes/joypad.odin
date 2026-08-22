@@ -44,35 +44,9 @@ read_joypad :: proc(jp: ^JoyPad) -> u8 {
 	return res
 }
 
-/*
-check_input1 :: proc(jp: ^JoyPad) {
-
-	// Check if keys are pressed and update the structure
-	if rl.IsKeyPressed(rl.KeyboardKey.UP) do jp.button_status += {.UP}
-	if rl.IsKeyPressed(rl.KeyboardKey.DOWN) do jp.button_status += {.DOWN}
-	if rl.IsKeyPressed(rl.KeyboardKey.LEFT) do jp.button_status += {.LEFT}
-	if rl.IsKeyPressed(rl.KeyboardKey.RIGHT) do jp.button_status += {.RIGHT}
-	if rl.IsKeyPressed(rl.KeyboardKey.A) do jp.button_status += {.BUTTON_A}
-	if rl.IsKeyPressed(rl.KeyboardKey.S) do jp.button_status += {.BUTTON_B}
-	if rl.IsKeyPressed(rl.KeyboardKey.SPACE) do jp.button_status += {.SELECT}
-	if rl.IsKeyPressed(rl.KeyboardKey.ENTER) do jp.button_status += {.START}
-
-	// Check if keys are not pressed and update the structure
-	if rl.IsKeyReleased(rl.KeyboardKey.UP) do jp.button_status -= {.UP}
-	if rl.IsKeyReleased(rl.KeyboardKey.DOWN) do jp.button_status -= {.DOWN}
-	if rl.IsKeyReleased(rl.KeyboardKey.LEFT) do jp.button_status -= {.LEFT}
-	if rl.IsKeyReleased(rl.KeyboardKey.RIGHT) do jp.button_status -= {.RIGHT}
-	if rl.IsKeyReleased(rl.KeyboardKey.A) do jp.button_status -= {.BUTTON_A}
-	if rl.IsKeyReleased(rl.KeyboardKey.S) do jp.button_status -= {.BUTTON_B}
-	if rl.IsKeyReleased(rl.KeyboardKey.SPACE) do jp.button_status -= {.SELECT}
-	if rl.IsKeyReleased(rl.KeyboardKey.ENTER) do jp.button_status -= {.START}
-
-}
-*/
-
-check_input1b :: proc(jp1: ^JoyPad, jp2: ^JoyPad, keymap: map[sdl3.Scancode]Buttons) -> int {
-	return -1
-}
+// check_input1b :: proc(jp1: ^JoyPad, jp2: ^JoyPad, keymap: map[sdl3.Scancode]Buttons) -> int {
+	// return -1
+// }
 
 check_input1 :: proc(jp: ^JoyPad, fast_forward: ^bool) -> int {
 	event: sdl3.Event
@@ -133,6 +107,3 @@ check_input1 :: proc(jp: ^JoyPad, fast_forward: ^bool) -> int {
 	return 0
 
 }
-
-// Just mapping joypad 1 and 2 to same inputs right now
-// check_input2 := check_input1

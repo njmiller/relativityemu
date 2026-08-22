@@ -13,7 +13,7 @@ MapperInfo :: struct {
 }
 
 // Call the different mapper routines implemented in the mapper package.
-update_mi :: proc(mi: ^MapperInfo, ppu: ^Ricoh2c02, addr: u16, data: u8) {
+update_mi :: proc(mi: ^MapperInfo, ppu: ^Ricoh2c02, addr: u16, data: u8, prg_val: u8) {
 	// delete(bus.prg_rom)
 
 	switch mi.num {
@@ -22,7 +22,9 @@ update_mi :: proc(mi: ^MapperInfo, ppu: ^Ricoh2c02, addr: u16, data: u8) {
 	case 1:
 		update_mapper_1(mi, ppu, addr, data)
 	case 2:
-		update_mapper_2(mi, data)
+		update_mapper_2(mi, data, prg_val)
+	case 3:
+		update_mapper_3(mi, data, prg_val)
 	case:
 		log.fatal("Unimplemented mapper:", mi.num)
 	}
@@ -97,8 +99,16 @@ update_mapper_1 :: proc(mi: ^MapperInfo, ppu: ^Ricoh2c02, addr: u16, data: u8) {
 	}
 }
 
-update_mapper_2 :: proc(mi: ^MapperInfo, data: u8) {
-	mi.info[0] = auto_cast (data & 0b0000_1111)
+// UxROM
+update_mapper_2 :: proc(mi: ^MapperInfo, data: u8, prg_val: u8) {
+	latched := data & prg_val
+	mi.info[0] = auto_cast (latched & 0b0000_1111)
+}
+
+// CNROM
+update_mapper_3 :: proc(mi: ^MapperInfo, data: u8, prg_val: u8) {
+	latched := data & prg_val
+	mi.info[0] = auto_cast (latched & 0b0000_0011)
 }
 
 init_mapper :: proc(mapper_num: int, mi: ^MapperInfo, nprg: int, nchr: int) {
@@ -112,6 +122,8 @@ init_mapper :: proc(mapper_num: int, mi: ^MapperInfo, nprg: int, nchr: int) {
 		init_mapper_1(mi, nprg, nchr)
 	case 2:
 		init_mapper_2(mi, nprg)
+	case 3:
+		init_mapper_3(mi, nchr)
 	}
 }
 
@@ -148,6 +160,11 @@ init_mapper_2 :: proc(mi: ^MapperInfo, nprg: int) {
 	mi.info[1] = nprg - 1
 }
 
+init_mapper_3 :: proc(mi: ^MapperInfo, nchr: int) {
+	mi.info[0] = 0
+	mi.info[1] = nchr - 1
+}
+
 prg_read :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
 	data: u8
 	switch mi.num {
@@ -157,6 +174,10 @@ prg_read :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
 		data = read_mapper_1(prg_rom, mi, addr)
 	case 2:
 		data = read_mapper_2(prg_rom, mi, addr)
+	case 3:
+		// Since there is no prg bank swapping
+		// it is the samea s mapper 0
+		data = read_mapper_0(prg_rom, mi, addr)
 	case:
 		log.fatal("Unimplemented mapper.")
 	}
@@ -247,6 +268,8 @@ chr_offset :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> int {
 	switch mi.num {
 	case 1:
 		return offset_mapper_1_chr(chr_rom, mi, addr)
+	case 2:
+		return offset_mapper_3_chr(mi, addr)
 	case:
 		// Mappers 0 and 2 have no CHR banking
 		return int(addr)
@@ -294,4 +317,9 @@ offset_mapper_1_chr :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> int {
 	}
 
 	return rom_addr
+}
+
+offset_mapper_3_chr :: proc(mi: ^MapperInfo, addr: u16) -> int {
+	chr_byte := mi.info[0] * 0x2000 + int(addr)
+	return int(chr_byte)
 }

@@ -117,9 +117,10 @@ bus_mem_write :: proc(bus: ^mos6502.Bus, addr: u16, data: u8) {
 		bus.prg_ram[addr - 0x6000] = data
 		bus.prg_ram_dirty = true
 	case 0x8000 ..= 0xFFFF:
-		// This is where I would need to implement mapper stuff
-		// log.fatal("Attempting to write to a cartridge ROM space.")
-		update_mi(&bus.mapper, &bus.ppu, addr, data)
+		// For bus conflict stuff, I need to know the prg value
+		// at the address being written
+		prg_val := prg_read(bus.prg_rom, &bus.mapper, addr)
+		update_mi(&bus.mapper, &bus.ppu, addr, data, prg_val)
 	case:
 		fmt.println("Ignoring mem write-access at", addr)
 	}
