@@ -158,11 +158,9 @@ init_nes :: proc(fn: string) -> ^NES {
 	// code to figure out what part of the PRG is accessible
 	// nes.bus.prg_rom = init_mapper_prg(rom.prg_rom, nes.bus.mapper)
 
-	// Initialize the MapperInfo structure with the mapper num.
-	init_mapper(rom.mapper, &nes.bus.mapper, rom.nprg_banks, rom.nchr_banks)
 	// nes.bus.mapper.num = rom.mapper
 
-	// nes.bus.mapper = rom.mapper 
+	// nes.bus.mapper = rom.mapper
 	nes.bus.prg_rom = rom.prg_rom
 	nes.bus.prg_ram = make([]u8, 8192)
 	if rom.has_battery {
@@ -172,6 +170,10 @@ init_nes :: proc(fn: string) -> ^NES {
 
 	nes.bus.ppu.chr_rom = rom.chr_rom
 	nes.bus.ppu.mirroring = rom.mirroring
+
+	// Initialize the MapperInfo structure with the mapper num. This runs after the
+	// header mirroring is applied because a mapper can drive the mirroring itself.
+	init_mapper(rom.mapper, &nes.bus.mapper, &nes.bus.ppu, rom.nprg_banks, rom.nchr_banks)
 
 	// The PPU needs the mapper to know which CHR bank is currently accessible
 	nes.bus.ppu.mapper = &nes.bus.mapper

@@ -905,7 +905,7 @@ render_pixel :: proc(ppu: ^Ricoh2c02) {
 	render_both: Mask_Bitset : {.SHOW_BACKGROUND, .SHOW_SPRITES}
 	if sprite_0_render && ppu.sprite_zero && render_both <= ppu.mask && bg_color != 0 {
 		show_left8: Mask_Bitset : {.LEFTMOST8_BACKGROUND, .LEFTMOST8_SPRITE}
-		min_cycle := 2 if show_left8 <= ppu.mask else 9
+		min_cycle := 1 if show_left8 <= ppu.mask else 9
 		max_cycle := 255 // TODO: Check why 255 and not 256
 
 		if min_cycle <= ppu.cycles && ppu.cycles <= max_cycle do ppu.status += {.SPRITE_0_HIT}
@@ -954,7 +954,8 @@ get_sprites_scanline :: proc(ppu: ^Ricoh2c02) {
 
 		y_size: u8 = 16 if .SPRITE_SIZE in ppu.ctrl else 8
 
-		if sc < 8 && next_scanline >= y && next_scanline < y + y_size {
+		// A sprite with OAM Y of n is drawn on scanlines n+1 through n+y_size
+		if sc < 8 && int(next_scanline) > int(y) && int(next_scanline) <= int(y) + int(y_size) {
 			// TODO: See how to copy multiple bytes at once
 			for j in 0 ..< 4 {
 				ppu.oam_secondary[4 * sc + j] = ppu.oam_data[4 * i + j]
@@ -995,7 +996,7 @@ load_sprite_shifters :: proc(ppu: ^Ricoh2c02) {
 
 		addr_lo: u16
 
-		del_y := u16(new_scanline - sprite_y)
+		del_y := u16(new_scanline - sprite_y - 1)
 
 		if .SPRITE_SIZE not_in ppu.ctrl {
 			// 8x8 sprites

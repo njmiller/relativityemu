@@ -124,14 +124,17 @@ update_mapper_7 :: proc(mi: ^MapperInfo, ppu: ^Ricoh2c02, data: u8) {
           |  +++- Select 32 KB PRG ROM bank for CPU $8000-$FFFF
           +------ Select 1 KB VRAM page for all 4 nametables
 	*/
-    latched := data
-	mi.info[0] = auto_cast (latched & 0b0000_0111)
+	// The cart only decodes as many bank bits as it has 32 KB banks, so a write
+	// of a bank past the end of the ROM wraps instead of running off it
+	nbanks := mi.info[2] / 2
+	if nbanks < 1 do nbanks = 1
+	mi.info[0] = int(data & 0b0000_0111) & (nbanks - 1)
 
 	// Set the nametable mirroring from the written bit
-	ppu.mirroring = latched & 0b0001_0000 != 0 ? .ONE_SCREEN_UPPER : .ONE_SCREEN_LOWER
+	ppu.mirroring = data & 0b0001_0000 != 0 ? .ONE_SCREEN_UPPER : .ONE_SCREEN_LOWER
 }
 
-init_mapper :: proc(mapper_num: int, mi: ^MapperInfo, nprg: int, nchr: int) {
+init_mapper :: proc(mapper_num: int, mi: ^MapperInfo, ppu: ^Ricoh2c02, nprg: int, nchr: int) {
 
 	mi.num = mapper_num
 
@@ -145,7 +148,7 @@ init_mapper :: proc(mapper_num: int, mi: ^MapperInfo, nprg: int, nchr: int) {
 	case 3:
 		init_mapper_3(mi, nprg, nchr)
 	case 7:
-		init_mapper_7(mi, nprg)
+		init_mapper_7(mi, ppu, nprg)
 	}
 }
 
@@ -188,10 +191,14 @@ init_mapper_3 :: proc(mi: ^MapperInfo, nprg: int, nchr: int) {
 	mi.info[2] = nprg
 }
 
-init_mapper_7 :: proc(mi: ^MapperInfo, nprg: int) {
+init_mapper_7 :: proc(mi: ^MapperInfo, ppu: ^Ricoh2c02, nprg: int) {
 	mi.info[0] = 0
 	mi.info[1] = 0
 	mi.info[2] = nprg
+
+	// AxROM drives the nametable page from the bank latch, so the mirroring in
+	// the header never applies. The latch powers up at 0, selecting the lower page
+	ppu.mirroring = .ONE_SCREEN_LOWER
 }
 
 prg_read :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
