@@ -123,7 +123,7 @@ init_mapper :: proc(mapper_num: int, mi: ^MapperInfo, nprg: int, nchr: int) {
 	case 2:
 		init_mapper_2(mi, nprg)
 	case 3:
-		init_mapper_3(mi, nchr)
+		init_mapper_3(mi, nprg, nchr)
 	}
 }
 
@@ -160,9 +160,10 @@ init_mapper_2 :: proc(mi: ^MapperInfo, nprg: int) {
 	mi.info[1] = nprg - 1
 }
 
-init_mapper_3 :: proc(mi: ^MapperInfo, nchr: int) {
+init_mapper_3 :: proc(mi: ^MapperInfo, nprg: int, nchr: int) {
 	mi.info[0] = 0
 	mi.info[1] = nchr - 1
+	mi.info[2] = nprg
 }
 
 prg_read :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
@@ -177,7 +178,7 @@ prg_read :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
 	case 3:
 		// Since there is no prg bank swapping
 		// it is the samea s mapper 0
-		data = read_mapper_0(prg_rom, mi, addr)
+		data = read_mapper_3(prg_rom, mi, addr)
 	case:
 		log.fatal("Unimplemented mapper.")
 	}
@@ -262,13 +263,20 @@ read_mapper_2 :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
 	}
 }
 
+read_mapper_3 :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
+	nbanks := mi.info[2]
+	addr := addr - 0x8000
+	if nbanks == 1 && addr >= PRG_BANK_SIZE do addr = addr % PRG_BANK_SIZE
+	return prg_rom[addr]
+}
+
 // Convert a PPU pattern table address into an index into the CHR data. Used by
 // both the reads and the CHR RAM writes so they always agree on the banking.
 chr_offset :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> int {
 	switch mi.num {
 	case 1:
 		return offset_mapper_1_chr(chr_rom, mi, addr)
-	case 2:
+	case 3:
 		return offset_mapper_3_chr(mi, addr)
 	case:
 		// Mappers 0 and 2 have no CHR banking

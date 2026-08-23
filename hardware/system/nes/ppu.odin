@@ -903,7 +903,7 @@ render_pixel :: proc(ppu: ^Ricoh2c02) {
 	// the sprite to render of the two, it is the first sprite in the secondary OAM, 
 	// and the secondary OAM contains sprite 0
 	render_both: Mask_Bitset : {.SHOW_BACKGROUND, .SHOW_SPRITES}
-	if sprite_0_render && ppu.sprite_zero && render_both <= ppu.mask && rendering_sprite {
+	if sprite_0_render && ppu.sprite_zero && render_both <= ppu.mask && bg_color != 0 {
 		show_left8: Mask_Bitset : {.LEFTMOST8_BACKGROUND, .LEFTMOST8_SPRITE}
 		min_cycle := 2 if show_left8 <= ppu.mask else 9
 		max_cycle := 255 // TODO: Check why 255 and not 256
