@@ -7,6 +7,8 @@ import "core:log"
 
 // PRG_BANK_SIZE :: 0x4000 // defines in ines.odin
 
+// Mappers to implement order: 7, 11, 4
+
 MapperInfo :: struct {
 	num:  int,
 	info: [10]int,
@@ -25,6 +27,8 @@ update_mi :: proc(mi: ^MapperInfo, ppu: ^Ricoh2c02, addr: u16, data: u8, prg_val
 		update_mapper_2(mi, data, prg_val)
 	case 3:
 		update_mapper_3(mi, data, prg_val)
+	case 7:
+		update_mapper_7(mi, ppu, data)
 	case:
 		log.fatal("Unimplemented mapper:", mi.num)
 	}
@@ -111,6 +115,22 @@ update_mapper_3 :: proc(mi: ^MapperInfo, data: u8, prg_val: u8) {
 	mi.info[0] = auto_cast (latched & 0b0000_0011)
 }
 
+// AxROM
+update_mapper_7 :: proc(mi: ^MapperInfo, ppu: ^Ricoh2c02, data: u8) {
+	/* 7  bit  0
+	   ---- ----
+	   xxxM xPPP
+          |  |||
+          |  +++- Select 32 KB PRG ROM bank for CPU $8000-$FFFF
+          +------ Select 1 KB VRAM page for all 4 nametables
+	*/
+    latched := data
+	mi.info[0] = auto_cast (latched & 0b0000_0111)
+
+	// Set the nametable mirroring from the written bit
+	ppu.mirroring = latched & 0b0001_0000 != 0 ? .ONE_SCREEN_UPPER : .ONE_SCREEN_LOWER
+}
+
 init_mapper :: proc(mapper_num: int, mi: ^MapperInfo, nprg: int, nchr: int) {
 
 	mi.num = mapper_num
@@ -124,6 +144,8 @@ init_mapper :: proc(mapper_num: int, mi: ^MapperInfo, nprg: int, nchr: int) {
 		init_mapper_2(mi, nprg)
 	case 3:
 		init_mapper_3(mi, nprg, nchr)
+	case 7:
+		init_mapper_7(mi, nprg)
 	}
 }
 
@@ -166,6 +188,12 @@ init_mapper_3 :: proc(mi: ^MapperInfo, nprg: int, nchr: int) {
 	mi.info[2] = nprg
 }
 
+init_mapper_7 :: proc(mi: ^MapperInfo, nprg: int) {
+	mi.info[0] = 0
+	mi.info[1] = 0
+	mi.info[2] = nprg
+}
+
 prg_read :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
 	data: u8
 	switch mi.num {
@@ -176,9 +204,9 @@ prg_read :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
 	case 2:
 		data = read_mapper_2(prg_rom, mi, addr)
 	case 3:
-		// Since there is no prg bank swapping
-		// it is the samea s mapper 0
 		data = read_mapper_3(prg_rom, mi, addr)
+	case 7:
+		data = read_mapper_7(prg_rom, mi, addr)
 	case:
 		log.fatal("Unimplemented mapper.")
 	}
@@ -270,6 +298,13 @@ read_mapper_3 :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
 	return prg_rom[addr]
 }
 
+read_mapper_7 :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
+	// PRG_BANK_SIZE is defined as 16 KB, however for this mapper
+	// it is a full 32 KB switch
+	addr : int = auto_cast addr - 0x8000
+	return prg_rom[2 * PRG_BANK_SIZE * mi.info[0] + addr]
+}
+
 // Convert a PPU pattern table address into an index into the CHR data. Used by
 // both the reads and the CHR RAM writes so they always agree on the banking.
 chr_offset :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> int {
@@ -279,7 +314,7 @@ chr_offset :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> int {
 	case 3:
 		return offset_mapper_3_chr(mi, addr)
 	case:
-		// Mappers 0 and 2 have no CHR banking
+		// Mappers 0, 2, and 7 have no CHR banking
 		return int(addr)
 	}
 }
