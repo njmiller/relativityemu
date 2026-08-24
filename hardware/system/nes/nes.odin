@@ -138,6 +138,8 @@ ppu_oam_dma :: proc(bus: ^Bus, addr: u8) {
 	// The DMA unit halts the CPU for 513 cycles while it copies, and games time
 	// raster effects around that. The copy above is instant, so the PPU and APU
 	// have to be advanced by hand to keep them in phase with the CPU
+	// TODO: Can I figure out a way to move this to within cpu6502.odin (the cycle number)?
+	// Or is the cycle count specific to the NES?
 	tick(bus, 513)
 }
 

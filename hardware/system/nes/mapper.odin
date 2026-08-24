@@ -7,7 +7,7 @@ import "core:log"
 
 // PRG_BANK_SIZE :: 0x4000 // defines in ines.odin
 
-// Mappers to implement order: 7, 11, 4
+// Mappers to implement order: 11, 4
 
 MapperInfo :: struct {
 	num:  int,
@@ -29,6 +29,8 @@ update_mi :: proc(mi: ^MapperInfo, ppu: ^Ricoh2c02, addr: u16, data: u8, prg_val
 		update_mapper_3(mi, data, prg_val)
 	case 7:
 		update_mapper_7(mi, ppu, data)
+	case 11:
+		update_mapper_11(mi, data)
 	case:
 		log.fatal("Unimplemented mapper:", mi.num)
 	}
@@ -134,6 +136,20 @@ update_mapper_7 :: proc(mi: ^MapperInfo, ppu: ^Ricoh2c02, data: u8) {
 	ppu.mirroring = data & 0b0001_0000 != 0 ? .ONE_SCREEN_UPPER : .ONE_SCREEN_LOWER
 }
 
+update_mapper_11 :: proc(mi: ^MapperInfo, data: u8) {
+	/* 7  bit  0
+	   ---- ----
+	   CCCC LLPP
+	   |||| ||||
+	   |||| ||++- Select 32 KB PRG ROM bank for CPU $8000-$FFFF
+	   |||| ++--- Used for lockout defeat
+	   ++++------ Select 8 KB CHR ROM bank for PPU $0000-$1FFF 
+	*/
+
+	mi.info[0] = int(data & 0b0000_0011)
+	mi.info[1] = int((data & 0b1111_0000) >> 4)
+}
+
 init_mapper :: proc(mapper_num: int, mi: ^MapperInfo, ppu: ^Ricoh2c02, nprg: int, nchr: int) {
 
 	mi.num = mapper_num
@@ -149,6 +165,8 @@ init_mapper :: proc(mapper_num: int, mi: ^MapperInfo, ppu: ^Ricoh2c02, nprg: int
 		init_mapper_3(mi, nprg, nchr)
 	case 7:
 		init_mapper_7(mi, ppu, nprg)
+	case 11:
+		init_mapper_11(mi, nprg, nchr)
 	}
 }
 
@@ -201,6 +219,13 @@ init_mapper_7 :: proc(mi: ^MapperInfo, ppu: ^Ricoh2c02, nprg: int) {
 	ppu.mirroring = .ONE_SCREEN_LOWER
 }
 
+init_mapper_11 :: proc(mi: ^MapperInfo, nprg: int, nchr: int) {
+	mi.info[0] = 0
+	mi.info[1] = 0
+	mi.info[2] = nprg
+	mi.info[3] = nchr
+}
+
 prg_read :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
 	data: u8
 	switch mi.num {
@@ -212,7 +237,7 @@ prg_read :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
 		data = read_mapper_2(prg_rom, mi, addr)
 	case 3:
 		data = read_mapper_3(prg_rom, mi, addr)
-	case 7:
+	case 7, 11:
 		data = read_mapper_7(prg_rom, mi, addr)
 	case:
 		log.fatal("Unimplemented mapper.")
@@ -320,6 +345,8 @@ chr_offset :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> int {
 		return offset_mapper_1_chr(chr_rom, mi, addr)
 	case 3:
 		return offset_mapper_3_chr(mi, addr)
+	case 11:
+		return offset_mapper_11_chr(mi, addr)
 	case:
 		// Mappers 0, 2, and 7 have no CHR banking
 		return int(addr)
@@ -371,5 +398,10 @@ offset_mapper_1_chr :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> int {
 
 offset_mapper_3_chr :: proc(mi: ^MapperInfo, addr: u16) -> int {
 	chr_byte := mi.info[0] * 0x2000 + int(addr)
+	return int(chr_byte)
+}
+
+offset_mapper_11_chr :: proc(mi: ^MapperInfo, addr: u16) -> int {
+	chr_byte := mi.info[1] * 0x2000 + int(addr)
 	return int(chr_byte)
 }
