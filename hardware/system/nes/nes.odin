@@ -134,6 +134,11 @@ ppu_oam_dma :: proc(bus: ^Bus, addr: u8) {
 	for i in 0 ..< 256 {
 		bus.ppu.oam_data[i] = bus.read(bus, u16(i) + addr_min)
 	}
+
+	// The DMA unit halts the CPU for 513 cycles while it copies, and games time
+	// raster effects around that. The copy above is instant, so the PPU and APU
+	// have to be advanced by hand to keep them in phase with the CPU
+	tick(bus, 513)
 }
 
 init_nes :: proc(fn: string) -> ^NES {
