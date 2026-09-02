@@ -39,31 +39,31 @@ save_path_for_rom :: proc(rom_fn: string) -> string {
     return save_fn
 }
 
-load_sram :: proc(bus: ^Bus) {
+load_sram :: proc(cart: ^Cartridge) {
 
-    if bus.save_path == "" do return
+    if cart.save_path == "" do return
 
-    data, err := os.read_entire_file_from_path(bus.save_path, context.allocator)
+    data, err := os.read_entire_file_from_path(cart.save_path, context.allocator)
     if err != nil do return
 
-    copy_slice(bus.prg_ram, data)
+    copy_slice(cart.prg_ram, data)
 
-    if len(data) != len(bus.prg_ram) {
+    if len(data) != len(cart.prg_ram) {
         log.warn("Length of save data != length of prg_ram")
     }
 
-    bus.prg_ram_dirty = false
+    cart.prg_ram_dirty = false
     delete(data)
 }
 
-save_sram :: proc(bus: ^Bus) {
-    if bus.save_path == "" || !bus.prg_ram_dirty do return
+save_sram :: proc(cart: ^Cartridge) {
+    if cart.save_path == "" || !cart.prg_ram_dirty do return
 
-    err := os.write_entire_file(bus.save_path, bus.prg_ram)
+    err := os.write_entire_file(cart.save_path, cart.prg_ram)
 
     if err != nil{
         log.error("Error writing save file.")
     } else {
-        bus.prg_ram_dirty = false
+        cart.prg_ram_dirty = false
     }
 }

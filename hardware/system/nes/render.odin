@@ -336,7 +336,7 @@ render_background :: proc(ppu: ^Ricoh2c02, frame: ^Frame) {
 	main_nametable: []u8
 	second_nametable: []u8
 	// ppu.mirroring = .HORIZONTAL
-	switch ppu.mirroring {
+	switch ppu.cart.mirroring {
 	case .HORIZONTAL:
 		switch get_nametable_addr(ppu.ctrl) {
 		case 0x2000, 0x2400:
@@ -357,7 +357,7 @@ render_background :: proc(ppu: ^Ricoh2c02, frame: ^Frame) {
 			second_nametable = ppu.vram[0:0x400]
 		}
 	case .FOUR_SCREEN, .ONE_SCREEN_LOWER, .ONE_SCREEN_UPPER:
-		log.panic("Not supported mirroring type:", ppu.mirroring)
+		log.panic("Not supported mirroring type:", ppu.cart.mirroring)
 	}
 
 	// name_table := ppu.vram[0:0x400]
@@ -394,7 +394,7 @@ render_name_table :: proc(
 		tile_x := i % 32
 		tile_y := i / 32
 		idx := bank + u16(tile_num) * 16
-		tile := ppu.chr_rom[idx:idx + 16]
+		tile := ppu.cart.chr_rom[idx:idx + 16]
 		// pallette := bg_pallette(ppu, tile_x, tile_y)
 		pallette := bg_pallette2(ppu, attribute_table, tile_x, tile_y)
 
@@ -451,7 +451,7 @@ render_sprites :: proc(ppu: ^Ricoh2c02, frame: ^Frame) {
 		bank := get_sprite_pattern_addr(ppu.ctrl)
 
 		idx := bank + u16(tile_idx) * 16
-		tile := ppu.chr_rom[idx:idx + 16]
+		tile := ppu.cart.chr_rom[idx:idx + 16]
 
 		for y in 0 ..= 7 {
 			upper := tile[y]

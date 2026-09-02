@@ -28,13 +28,13 @@ PPUReg :: struct #raw_union {
 }
 
 Ricoh2c02 :: struct {
-	chr_rom:            []u8,
-	mapper:             ^MapperInfo,
+	// The CHR data, the nametable mirroring, and the CHR banking all live on the
+	// cartridge, so the PPU reaches them through it
+	cart:               ^Cartridge,
 	palette_table:      [32]u8,
 	vram:               [2048]u8,
 	oam_data:           [256]u8,
 	oam_addr:           u8,
-	mirroring:          Mirroring,
 	ctrl:               Controller_Bitset,
 	mask:               Mask_Bitset,
 	status:             Status_Bitset,
@@ -47,7 +47,6 @@ Ricoh2c02 :: struct {
 	cycles:             int,
 	nmi_interrupt:      bool,
 	frame:              Frame,
-	is_chr_ram:         bool,
 	frame_num:          int,
 
 	// For bg tile loading
@@ -343,17 +342,17 @@ read_ppu_data :: proc(ppu: ^Ricoh2c02, mem_addr: u16) -> u8 {
 	case 0 ..= 0x1FFF:
 		// result = ppu.internal_data_buf
 		// ppu.internal_data_buf = ppu.chr_rom[mem_addr]
-		result = ppu.chr_rom[chr_offset(ppu.chr_rom, ppu.mapper, mem_addr)]
+		result = chr_read(ppu.cart, mem_addr)
 	case 0x2000 ..= 0x2FFF:
 		// result = ppu.internal_data_buf
 		// ppu.internal_data_buf = ppu.vram[mirror_vram_addr(mem_addr, ppu.mirroring)]
-		result = ppu.vram[mirror_vram_addr(mem_addr, ppu.mirroring)]
+		result = ppu.vram[mirror_vram_addr(mem_addr, ppu.cart.mirroring)]
 	case 0x3000 ..= 0x3EFF:
 		// $3000-3EFF is usually a mirror of the 2kB region from $2000-2EFF. 
 		// The PPU does not render from this address range, so this space has negligible utility.
 		// result = ppu.internal_data_buf
 		// ppu.internal_data_buf = ppu.vram[mirror_vram_addr(mem_addr - 0x1000, ppu.mirroring)]
-		result = ppu.vram[mirror_vram_addr(mem_addr - 0x1000, ppu.mirroring)]
+		result = ppu.vram[mirror_vram_addr(mem_addr - 0x1000, ppu.cart.mirroring)]
 	// log.error("Address space 0x3000..0x3EFF is not expected to be used:", mem_addr)
 	// Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C. 
 	// Note that this goes for writing as well as reading. A symptom of not having implemented
@@ -379,15 +378,14 @@ write_to_ppu_data :: proc(ppu: ^Ricoh2c02, mem_addr: u16, data: u8) {
 
 	switch mem_addr {
 	case 0 ..= 0x1FFF:
-		if ppu.is_chr_ram do ppu.chr_rom[chr_offset(ppu.chr_rom, ppu.mapper, mem_addr)] = data
-		else do log.warn("Trying to write to CHR Rom")
+		chr_write(ppu.cart, mem_addr, data)
 	case 0x2000 ..= 0x2FFF:
-		mem_addr_mirror := mirror_vram_addr(mem_addr, ppu.mirroring)
+		mem_addr_mirror := mirror_vram_addr(mem_addr, ppu.cart.mirroring)
 		ppu.vram[mem_addr_mirror] = data
 	case 0x3000 ..= 0x3EFF:
 		// $3000-3EFF is usually a mirror of the 2kB region from $2000-2EFF. 
 		// The PPU does not render from this address range, so this space has negligible utility.
-		mem_addr_mirror := mirror_vram_addr(mem_addr - 0x1000, ppu.mirroring)
+		mem_addr_mirror := mirror_vram_addr(mem_addr - 0x1000, ppu.cart.mirroring)
 		ppu.vram[mem_addr_mirror] = data
 	// log.error("Address space 0x3000..0x3EFF is not expected to be used:", mem_addr)
 	// Addresses $3F10/$3F14/$3F18/$3F1C are mirrors of $3F00/$3F04/$3F08/$3F0C. 

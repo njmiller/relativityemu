@@ -7,40 +7,42 @@ import "core:log"
 
 // PRG_BANK_SIZE :: 0x4000 // defines in ines.odin
 
-// Mappers to implement order: 11, 4
+// Mappers to implement order: 9, 10, 69, 4
 
 MapperInfo :: struct {
 	num:  int,
-	info: [10]int,
+	info: [20]int,
 }
 
 // Call the different mapper routines implemented in the mapper package.
-update_mi :: proc(mi: ^MapperInfo, ppu: ^Ricoh2c02, addr: u16, data: u8, prg_val: u8) {
+update_mi :: proc(cart: ^Cartridge, addr: u16, data: u8, prg_val: u8) {
 	// delete(bus.prg_rom)
 
-	switch mi.num {
+	switch cart.mapper.num {
 	case 0:
 		update_mapper_0()
 	case 1:
-		update_mapper_1(mi, ppu, addr, data)
+		update_mapper_1(cart, addr, data)
 	case 2:
-		update_mapper_2(mi, data, prg_val)
+		update_mapper_2(cart, data, prg_val)
 	case 3:
-		update_mapper_3(mi, data, prg_val)
+		update_mapper_3(cart, data, prg_val)
 	case 7:
-		update_mapper_7(mi, ppu, data)
+		update_mapper_7(cart, data)
 	case 11:
-		update_mapper_11(mi, data)
+		update_mapper_11(cart, data)
 	case:
-		log.fatal("Unimplemented mapper:", mi.num)
+		log.fatal("Unimplemented mapper:", cart.mapper.num)
 	}
 }
 
 update_mapper_0 :: proc() {
-	log.fatal("Trying to write to PRG RAM in Mapper 0")
+	log.fatal("Trying to write to PRG ROM in Mapper 0")
 }
 
-update_mapper_1 :: proc(mi: ^MapperInfo, ppu: ^Ricoh2c02, addr: u16, data: u8) {
+update_mapper_1 :: proc(cart: ^Cartridge, addr: u16, data: u8) {
+	mi := &cart.mapper
+
 	// MMC1 shift register protocol only applies to $8000-$FFFF
 	// Ignore writes to $6000-$7FFF (PRG RAM)
 	if addr < 0x8000 do return
@@ -80,13 +82,13 @@ update_mapper_1 :: proc(mi: ^MapperInfo, ppu: ^Ricoh2c02, addr: u16, data: u8) {
 			// Bits 1:0 select the nametable mirroring
 			switch shift_val & 0x03 {
 			case 0:
-				ppu.mirroring = .ONE_SCREEN_LOWER
+				cart.mirroring = .ONE_SCREEN_LOWER
 			case 1:
-				ppu.mirroring = .ONE_SCREEN_UPPER
+				cart.mirroring = .ONE_SCREEN_UPPER
 			case 2:
-				ppu.mirroring = .VERTICAL
+				cart.mirroring = .VERTICAL
 			case 3:
-				ppu.mirroring = .HORIZONTAL
+				cart.mirroring = .HORIZONTAL
 			}
 		case 0x2000:
 			// $A000-$BFFF - CHR Bank 0 (5 bits)
@@ -106,19 +108,23 @@ update_mapper_1 :: proc(mi: ^MapperInfo, ppu: ^Ricoh2c02, addr: u16, data: u8) {
 }
 
 // UxROM
-update_mapper_2 :: proc(mi: ^MapperInfo, data: u8, prg_val: u8) {
+update_mapper_2 :: proc(cart: ^Cartridge, data: u8, prg_val: u8) {
 	latched := data & prg_val
-	mi.info[0] = auto_cast (latched & 0b0000_1111)
+	cart.mapper.info[0] = auto_cast (latched & 0b0000_1111)
 }
 
 // CNROM
-update_mapper_3 :: proc(mi: ^MapperInfo, data: u8, prg_val: u8) {
+update_mapper_3 :: proc(cart: ^Cartridge, data: u8, prg_val: u8) {
 	latched := data & prg_val
-	mi.info[0] = auto_cast (latched & 0b0000_0011)
+	cart.mapper.info[0] = auto_cast (latched & 0b0000_0011)
+}
+
+// MMC3
+update_mapper_4 :: proc(cart: ^Cartridge, data: u8, prg_val: u8) {
 }
 
 // AxROM
-update_mapper_7 :: proc(mi: ^MapperInfo, ppu: ^Ricoh2c02, data: u8) {
+update_mapper_7 :: proc(cart: ^Cartridge, data: u8) {
 	/* 7  bit  0
 	   ---- ----
 	   xxxM xPPP
@@ -126,6 +132,8 @@ update_mapper_7 :: proc(mi: ^MapperInfo, ppu: ^Ricoh2c02, data: u8) {
           |  +++- Select 32 KB PRG ROM bank for CPU $8000-$FFFF
           +------ Select 1 KB VRAM page for all 4 nametables
 	*/
+	mi := &cart.mapper
+
 	// The cart only decodes as many bank bits as it has 32 KB banks, so a write
 	// of a bank past the end of the ROM wraps instead of running off it
 	nbanks := mi.info[2] / 2
@@ -133,50 +141,55 @@ update_mapper_7 :: proc(mi: ^MapperInfo, ppu: ^Ricoh2c02, data: u8) {
 	mi.info[0] = int(data & 0b0000_0111) & (nbanks - 1)
 
 	// Set the nametable mirroring from the written bit
-	ppu.mirroring = data & 0b0001_0000 != 0 ? .ONE_SCREEN_UPPER : .ONE_SCREEN_LOWER
+	cart.mirroring = data & 0b0001_0000 != 0 ? .ONE_SCREEN_UPPER : .ONE_SCREEN_LOWER
 }
 
-update_mapper_11 :: proc(mi: ^MapperInfo, data: u8) {
+update_mapper_10 :: proc(cart: ^Cartridge, addr: u16, data: u8) {
+}
+
+update_mapper_11 :: proc(cart: ^Cartridge, data: u8) {
 	/* 7  bit  0
 	   ---- ----
 	   CCCC LLPP
 	   |||| ||||
 	   |||| ||++- Select 32 KB PRG ROM bank for CPU $8000-$FFFF
 	   |||| ++--- Used for lockout defeat
-	   ++++------ Select 8 KB CHR ROM bank for PPU $0000-$1FFF 
+	   ++++------ Select 8 KB CHR ROM bank for PPU $0000-$1FFF
 	*/
 
-	mi.info[0] = int(data & 0b0000_0011)
-	mi.info[1] = int((data & 0b1111_0000) >> 4)
+	cart.mapper.info[0] = int(data & 0b0000_0011)
+	cart.mapper.info[1] = int((data & 0b1111_0000) >> 4)
 }
 
-init_mapper :: proc(mapper_num: int, mi: ^MapperInfo, ppu: ^Ricoh2c02, nprg: int, nchr: int) {
+init_mapper :: proc(cart: ^Cartridge) {
 
-	mi.num = mapper_num
+	cart.mapper.num = cart.mapper_num
 
-	switch mapper_num {
+	switch cart.mapper_num {
 	case 0:
-		init_mapper_0(mi, nprg)
+		init_mapper_0(cart)
 	case 1:
-		init_mapper_1(mi, nprg, nchr)
+		init_mapper_1(cart)
 	case 2:
-		init_mapper_2(mi, nprg)
+		init_mapper_2(cart)
 	case 3:
-		init_mapper_3(mi, nprg, nchr)
+		init_mapper_3(cart)
 	case 7:
-		init_mapper_7(mi, ppu, nprg)
+		init_mapper_7(cart)
 	case 11:
-		init_mapper_11(mi, nprg, nchr)
+		init_mapper_11(cart)
 	}
 }
 
-init_mapper_0 :: proc(mi: ^MapperInfo, nprg: int) {
+init_mapper_0 :: proc(cart: ^Cartridge) {
 	// For Mapper 0, just store the number of PRG banks in the
 	// first element of the info (either 1 or 2)
-	mi.info[0] = nprg
+	cart.mapper.info[0] = cart.nprg_banks
 }
 
-init_mapper_1 :: proc(mi: ^MapperInfo, nprg: int, nchr: int) {
+init_mapper_1 :: proc(cart: ^Cartridge) {
+	mi := &cart.mapper
+
 	// For Mapper 1 (MMC1), initialize shift register and internal registers
 	// info[0]: Shift register accumulated value (initially 0)
 	// info[1]: Shift register write count (initially 0)
@@ -192,67 +205,99 @@ init_mapper_1 :: proc(mi: ^MapperInfo, nprg: int, nchr: int) {
 	mi.info[3] = 0
 	mi.info[4] = 0
 	mi.info[5] = 0
-	mi.info[6] = nprg
-	mi.info[7] = nchr
+	mi.info[6] = cart.nprg_banks
+	mi.info[7] = cart.nchr_banks
 }
 
-init_mapper_2 :: proc(mi: ^MapperInfo, nprg: int) {
+init_mapper_2 :: proc(cart: ^Cartridge) {
 	// For Mapper 2, store the current bank in the first element
 	// and the number of the last bank in the second element
-	mi.info[0] = 0
-	mi.info[1] = nprg - 1
+	cart.mapper.info[0] = 0
+	cart.mapper.info[1] = cart.nprg_banks - 1
 }
 
-init_mapper_3 :: proc(mi: ^MapperInfo, nprg: int, nchr: int) {
+init_mapper_3 :: proc(cart: ^Cartridge) {
+	mi := &cart.mapper
+
 	mi.info[0] = 0
-	mi.info[1] = nchr - 1
-	mi.info[2] = nprg
+	mi.info[1] = cart.nchr_banks - 1
+	mi.info[2] = cart.nprg_banks
 }
 
-init_mapper_7 :: proc(mi: ^MapperInfo, ppu: ^Ricoh2c02, nprg: int) {
+init_mapper_4 :: proc(cart: ^Cartridge) {
+	mi := &cart.mapper
+
+	// MMC3 has 2 swappable PRG ROM banks and 6 swappable CHR banks
+
+	// 0-3 record what swappable values, the number of banks for the
+	// fixed banks and which banks are swappable
 	mi.info[0] = 0
 	mi.info[1] = 0
-	mi.info[2] = nprg
+	mi.info[2] = cart.nprg_banks
+	mi.info[3] = 0
+
+	// 4-10 record the 6 swappable CHR banks and the total number of
+	// CHR banks.
+	mi.info[4] = 0
+	mi.info[5] = 0
+	mi.info[6] = 0
+	mi.info[7] = 0
+	mi.info[8] = 0
+	mi.info[9] = 0
+	mi.info[10] = cart.nchr_banks
+
+	// Ignoring PRG RAM protect as I need to map it through here.
+}
+init_mapper_7 :: proc(cart: ^Cartridge) {
+	mi := &cart.mapper
+
+	mi.info[0] = 0
+	mi.info[1] = 0
+	mi.info[2] = cart.nprg_banks
 
 	// AxROM drives the nametable page from the bank latch, so the mirroring in
 	// the header never applies. The latch powers up at 0, selecting the lower page
-	ppu.mirroring = .ONE_SCREEN_LOWER
+	cart.mirroring = .ONE_SCREEN_LOWER
 }
 
-init_mapper_11 :: proc(mi: ^MapperInfo, nprg: int, nchr: int) {
+init_mapper_11 :: proc(cart: ^Cartridge) {
+	mi := &cart.mapper
+
 	mi.info[0] = 0
 	mi.info[1] = 0
-	mi.info[2] = nprg
-	mi.info[3] = nchr
+	mi.info[2] = cart.nprg_banks
+	mi.info[3] = cart.nchr_banks
 }
 
-prg_read :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
+prg_read :: proc(cart: ^Cartridge, addr: u16) -> u8 {
 	data: u8
-	switch mi.num {
+	switch cart.mapper.num {
 	case 0:
-		data = read_mapper_0(prg_rom, mi, addr)
+		data = read_mapper_0(cart, addr)
 	case 1:
-		data = read_mapper_1(prg_rom, mi, addr)
+		data = read_mapper_1(cart, addr)
 	case 2:
-		data = read_mapper_2(prg_rom, mi, addr)
+		data = read_mapper_2(cart, addr)
 	case 3:
-		data = read_mapper_3(prg_rom, mi, addr)
+		data = read_mapper_3(cart, addr)
 	case 7, 11:
-		data = read_mapper_7(prg_rom, mi, addr)
+		data = read_mapper_7(cart, addr)
 	case:
 		log.fatal("Unimplemented mapper.")
 	}
 	return data
 }
 
-read_mapper_0 :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
-	nbanks := mi.info[0]
+read_mapper_0 :: proc(cart: ^Cartridge, addr: u16) -> u8 {
+	nbanks := cart.mapper.info[0]
 	addr := addr - 0x8000
 	if nbanks == 1 && addr >= PRG_BANK_SIZE do addr = addr % PRG_BANK_SIZE
-	return prg_rom[addr]
+	return cart.prg_rom[addr]
 }
 
-read_mapper_1 :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
+read_mapper_1 :: proc(cart: ^Cartridge, addr: u16) -> u8 {
+	mi := &cart.mapper
+
 	// Get number of PRG banks for masking
 	nprg := mi.info[6]
 	// Extract PRG mode from Control register (bits 3:2)
@@ -264,7 +309,7 @@ read_mapper_1 :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
 
 	// Fast path: handle 1-bank PRG edge case in 32KB mode
 	if nprg == 1 && prg_mode <= 1 {
-		return prg_rom[offset % PRG_BANK_SIZE]
+		return cart.prg_rom[offset % PRG_BANK_SIZE]
 	}
 
 	// The PRG bank register is only 4 bits, so it can address at most 256KB.
@@ -309,51 +354,74 @@ read_mapper_1 :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
 		}
 	}
 
-	return prg_rom[rom_addr]
+	return cart.prg_rom[rom_addr]
 }
 
-read_mapper_2 :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
+read_mapper_2 :: proc(cart: ^Cartridge, addr: u16) -> u8 {
+	mi := &cart.mapper
 	addr: int = auto_cast addr - 0x8000
 
 	if addr < PRG_BANK_SIZE {
-		return prg_rom[PRG_BANK_SIZE * mi.info[0] + addr]
+		return cart.prg_rom[PRG_BANK_SIZE * mi.info[0] + addr]
 	} else {
 		addr = addr % PRG_BANK_SIZE
-		return prg_rom[PRG_BANK_SIZE * mi.info[1] + addr]
+		return cart.prg_rom[PRG_BANK_SIZE * mi.info[1] + addr]
 	}
 }
 
-read_mapper_3 :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
-	nbanks := mi.info[2]
+read_mapper_3 :: proc(cart: ^Cartridge, addr: u16) -> u8 {
+	nbanks := cart.mapper.info[2]
 	addr := addr - 0x8000
 	if nbanks == 1 && addr >= PRG_BANK_SIZE do addr = addr % PRG_BANK_SIZE
-	return prg_rom[addr]
+	return cart.prg_rom[addr]
 }
 
-read_mapper_7 :: proc(prg_rom: []u8, mi: ^MapperInfo, addr: u16) -> u8 {
+read_mapper_7 :: proc(cart: ^Cartridge, addr: u16) -> u8 {
 	// PRG_BANK_SIZE is defined as 16 KB, however for this mapper
 	// it is a full 32 KB switch
 	addr : int = auto_cast addr - 0x8000
-	return prg_rom[2 * PRG_BANK_SIZE * mi.info[0] + addr]
+	return cart.prg_rom[2 * PRG_BANK_SIZE * cart.mapper.info[0] + addr]
+}
+
+// Read a byte of the cartridge's CHR data. The PPU only ever sees a flat 8 KB
+// pattern table window, so the mapper decides which byte of CHR that really is
+chr_read :: proc(cart: ^Cartridge, addr: u16) -> u8 {
+	return cart.chr_rom[chr_offset(cart, addr)]
+}
+
+// Write a byte of CHR data. Only carts that shipped RAM in place of CHR ROM can
+// be written, and the write is dropped on the ones that did not
+chr_write :: proc(cart: ^Cartridge, addr: u16, data: u8) {
+	if !cart.is_chr_ram {
+		log.warn("Trying to write to CHR Rom")
+		return
+	}
+
+	cart.chr_rom[chr_offset(cart, addr)] = data
 }
 
 // Convert a PPU pattern table address into an index into the CHR data. Used by
 // both the reads and the CHR RAM writes so they always agree on the banking.
-chr_offset :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> int {
-	switch mi.num {
+// All the calculations are done here because both chr_read and chr_write use
+// the same logic whereas reading and writing to the PRG data use different
+// logic
+chr_offset :: proc(cart: ^Cartridge, addr: u16) -> int {
+	switch cart.mapper.num {
 	case 1:
-		return offset_mapper_1_chr(chr_rom, mi, addr)
+		return offset_mapper_1_chr(cart, addr)
 	case 3:
-		return offset_mapper_3_chr(mi, addr)
+		return offset_mapper_3_chr(cart, addr)
 	case 11:
-		return offset_mapper_11_chr(mi, addr)
+		return offset_mapper_11_chr(cart, addr)
 	case:
 		// Mappers 0, 2, and 7 have no CHR banking
 		return int(addr)
 	}
 }
 
-offset_mapper_1_chr :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> int {
+offset_mapper_1_chr :: proc(cart: ^Cartridge, addr: u16) -> int {
+	mi := &cart.mapper
+
 	// Carts with CHR RAM only ever have 8KB of it and the MMC1 CHR outputs are not
 	// wired to it, so the PPU addresses it directly. On 512KB PRG carts bit 4 of the
 	// CHR register drives PRG A18 instead, so it must not shift the CHR window here.
@@ -363,8 +431,8 @@ offset_mapper_1_chr :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> int {
 	chr_mode := (mi.info[2] >> 4) & 0x01
 
 	// Compute number of 8KB and 4KB banks available
-	n8k := len(chr_rom) / CHR_BANK_SIZE
-	n4k := len(chr_rom) / 0x1000
+	n8k := len(cart.chr_rom) / CHR_BANK_SIZE
+	n4k := len(cart.chr_rom) / 0x1000
 	// Guard to at least 1
 	if n8k < 1 do n8k = 1
 	if n4k < 1 do n4k = 1
@@ -396,12 +464,12 @@ offset_mapper_1_chr :: proc(chr_rom: []u8, mi: ^MapperInfo, addr: u16) -> int {
 	return rom_addr
 }
 
-offset_mapper_3_chr :: proc(mi: ^MapperInfo, addr: u16) -> int {
-	chr_byte := mi.info[0] * 0x2000 + int(addr)
+offset_mapper_3_chr :: proc(cart: ^Cartridge, addr: u16) -> int {
+	chr_byte := cart.mapper.info[0] * 0x2000 + int(addr)
 	return int(chr_byte)
 }
 
-offset_mapper_11_chr :: proc(mi: ^MapperInfo, addr: u16) -> int {
-	chr_byte := mi.info[1] * 0x2000 + int(addr)
+offset_mapper_11_chr :: proc(cart: ^Cartridge, addr: u16) -> int {
+	chr_byte := cart.mapper.info[1] * 0x2000 + int(addr)
 	return int(chr_byte)
 }

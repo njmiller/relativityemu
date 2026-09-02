@@ -26,17 +26,12 @@ RenderInfo :: struct {
 Bus :: struct {
 	using bus: mos6502.Bus,
 	cpu_vram:  [2048]u8,
-	prg_rom:   []u8,
-	prg_ram:   []u8,
 	ppu:       Ricoh2c02,
 	apu:       APU,
-	mapper:    MapperInfo,
 	jp1:       JoyPad,
 	jp2:       JoyPad,
 	ri:        RenderInfo,
-	rom:       ROM,
-	save_path: string, // "" when the cart has no battery; disables all save I/O
-	prg_ram_dirty: bool,
+	cart:      Cartridge,
 
 	// Emulated frames arrive at 60 * speed per second, so presenting one in
 	// every "speed" of them holds the display at roughly 60 FPS no matter how
@@ -57,9 +52,6 @@ PPU_REGISTERS_MIRRORS_END: u16 : 0x3FFF
 APU_REGISTERS: u16 : 0x4000
 APU_REGISTERS_END: u16 : 0x4015
 
-// TODO: Maybe put all the PRG ROM and CHR ROM data in the
-// cartridge structure and just pass that around to places
-// where it would be needed
 bus_mem_read :: proc(bus: ^mos6502.Bus, addr: u16) -> u8 {
 	bus := cast(^Bus)bus
 	mem_val: u8
@@ -78,10 +70,9 @@ bus_mem_read :: proc(bus: ^mos6502.Bus, addr: u16) -> u8 {
 	case APU_REGISTERS ..= APU_REGISTERS_END:
 		mem_val = read_apu_register(&bus.apu, addr)
 	case 0x6000 ..= 0x7FFF:
-		mem_val = bus.prg_ram[addr - 0x6000]
+		mem_val = bus.cart.prg_ram[addr - 0x6000]
 	case 0x8000 ..= 0xFFFF:
-		// mem_val = bus.prg_rom[addr - 0x8000]
-		mem_val = prg_read(bus.prg_rom, &bus.mapper, addr)
+		mem_val = prg_read(&bus.cart, addr)
 	case:
 		log.warn("Ignoring mem access at ", addr)
 		mem_val = 0
@@ -114,13 +105,13 @@ bus_mem_write :: proc(bus: ^mos6502.Bus, addr: u16, data: u8) {
 		// Writing to 0x4017 writes to the APU
 		write_apu_register(&bus.apu, addr, data)
 	case 0x6000 ..= 0x7FFF:
-		bus.prg_ram[addr - 0x6000] = data
-		bus.prg_ram_dirty = true
+		bus.cart.prg_ram[addr - 0x6000] = data
+		bus.cart.prg_ram_dirty = true
 	case 0x8000 ..= 0xFFFF:
 		// For bus conflict stuff, I need to know the prg value
 		// at the address being written
-		prg_val := prg_read(bus.prg_rom, &bus.mapper, addr)
-		update_mi(&bus.mapper, &bus.ppu, addr, data, prg_val)
+		prg_val := prg_read(&bus.cart, addr)
+		update_mi(&bus.cart, addr, data, prg_val)
 	case:
 		fmt.println("Ignoring mem write-access at", addr)
 	}
@@ -155,35 +146,20 @@ init_nes :: proc(fn: string) -> ^NES {
 	nes.cpu6502.dm_avail = false
 
 	// prg_rom, chr_rom, mapper, mirroring := read_ines(fn)
-	rom := read_ines(fn)
+	nes.bus.cart = read_ines(fn)
 
-	// Both the ROM and its components are stored because of mappers
-	nes.bus.rom = rom
-	nes.bus.ppu.is_chr_ram = rom.is_chr_ram
+	// The PPU reads its CHR data, mirroring, and CHR banking off the cartridge
+	nes.bus.ppu.cart = &nes.bus.cart
 
-	// Bus only has PRG accessible from 0x8000 to 0xFFFF so we need to use the mapper
-	// code to figure out what part of the PRG is accessible
-	// nes.bus.prg_rom = init_mapper_prg(rom.prg_rom, nes.bus.mapper)
-
-	// nes.bus.mapper.num = rom.mapper
-
-	// nes.bus.mapper = rom.mapper
-	nes.bus.prg_rom = rom.prg_rom
-	nes.bus.prg_ram = make([]u8, 8192)
-	if rom.has_battery {
-		nes.bus.save_path = save_path_for_rom(fn)
-		load_sram(&nes.bus)
-	} else do nes.bus.save_path = ""
-
-	nes.bus.ppu.chr_rom = rom.chr_rom
-	nes.bus.ppu.mirroring = rom.mirroring
+	nes.bus.cart.prg_ram = make([]u8, 8192)
+	if nes.bus.cart.has_battery {
+		nes.bus.cart.save_path = save_path_for_rom(fn)
+		load_sram(&nes.bus.cart)
+	} else do nes.bus.cart.save_path = ""
 
 	// Initialize the MapperInfo structure with the mapper num. This runs after the
-	// header mirroring is applied because a mapper can drive the mirroring itself.
-	init_mapper(rom.mapper, &nes.bus.mapper, &nes.bus.ppu, rom.nprg_banks, rom.nchr_banks)
-
-	// The PPU needs the mapper to know which CHR bank is currently accessible
-	nes.bus.ppu.mapper = &nes.bus.mapper
+	// cart is in place because a mapper can override the header's mirroring.
+	init_mapper(&nes.bus.cart)
 
 	// APU DMC needs ability to read memory
 	nes.bus.apu.dmc.bus = &nes.bus
@@ -332,7 +308,7 @@ run :: proc(nes: ^NES) {
 		if input_accum_cycles >= INPUT_POLL_CYCLES {
 			ex := check_input1(&nes.bus.jp1, &fast_forward)
 			if ex == -1 {
-				save_sram(&nes.bus)
+				save_sram(&nes.bus.cart)
 				return
 			}
 			input_accum_cycles = 0
@@ -341,7 +317,7 @@ run :: proc(nes: ^NES) {
 		// Increment the save counter and attempt to save if it is above the threshold
 		save_accum_cycles += num_cycles
 		if save_accum_cycles >= SAVE_INTERVAL_CYCLES {
-			save_sram(&nes.bus)
+			save_sram(&nes.bus.cart)
 			save_accum_cycles = 0
 		}
 

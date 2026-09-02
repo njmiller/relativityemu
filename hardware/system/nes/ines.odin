@@ -7,22 +7,34 @@ import "core:slice"
 
 PRG_BANK_SIZE :: 16384 // 2**14 16kB
 CHR_BANK_SIZE :: 8192 // 2**13 8kB
+PRG_RAM_BANK_SIZE :: 8192
 
-// Implement the NES ROM struct because we only store what is currently accessible in the Bus
-// and can then use this for the different mapper routines
-ROM :: struct {
-	prg_rom:    []u8,
-	chr_rom:    []u8,
-	mapper:     int,
-	mirroring:  Mirroring,
-	nprg_banks: int,
-	nchr_banks: int,
-	is_chr_ram: bool,
-	has_battery: bool,
+// Everything the cartridge holds: the data read out of the iNES file, the cart's own
+// RAM, and the mapper's runtime state. The whole struct is handed to the mapper routines
+// so each one can reach whichever of those parts it needs.
+Cartridge :: struct {
+	// Read out of the iNES file, fixed after load
+	prg_rom:       []u8,
+	chr_rom:       []u8,
+	mapper_num:    int,
+	mirroring:     Mirroring,
+	nprg_banks:    int,
+	nchr_banks:    int,
+	is_chr_ram:    bool,
+	has_battery:   bool,
+	prg_ram_size:  int,
+
+	// Cart RAM at CPU 0x6000 to 0x7FFF and its save file backing
+	prg_ram:       []u8,
+	save_path:     string, // "" when the cart has no battery; disables all save I/O
+	prg_ram_dirty: bool,
+
+	// Runtime latches owned by the mapper
+	mapper:        MapperInfo,
 }
 
 // read_ines :: proc(fn: string) -> ([]u8, []u8, u8, u8) {
-read_ines :: proc(fn: string) -> ROM {
+read_ines :: proc(fn: string) -> Cartridge {
 	data, err := os.read_entire_file(fn, context.allocator)
 	if err != nil {
 		log.fatalf("Could not read ROM file %v: %v", fn, err)
@@ -111,7 +123,17 @@ read_ines :: proc(fn: string) -> ROM {
 	if mirroring == 1 do mirroring2 = .VERTICAL
 	if mirroring == 2 do mirroring2 = .FOUR_SCREEN
 
-	rom := ROM{prg_rom, chr_rom, mapper, mirroring2, num_16, num_8, is_chr_ram, has_battery}
+	rom := Cartridge {
+		prg_rom      = prg_rom,
+		chr_rom      = chr_rom,
+		mapper_num   = mapper,
+		mirroring    = mirroring2,
+		nprg_banks   = num_16,
+		nchr_banks   = num_8,
+		is_chr_ram   = is_chr_ram,
+		has_battery  = has_battery,
+		prg_ram_size = int(prg_ram_size_8),
+	}
 
 	return rom
 	// return prg_rom, chr_rom, mapper, mirroring
