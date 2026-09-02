@@ -108,10 +108,7 @@ bus_mem_write :: proc(bus: ^mos6502.Bus, addr: u16, data: u8) {
 		bus.cart.prg_ram[addr - 0x6000] = data
 		bus.cart.prg_ram_dirty = true
 	case 0x8000 ..= 0xFFFF:
-		// For bus conflict stuff, I need to know the prg value
-		// at the address being written
-		prg_val := prg_read(&bus.cart, addr)
-		update_mi(&bus.cart, addr, data, prg_val)
+		prg_write(&bus.cart, addr, data)
 	case:
 		fmt.println("Ignoring mem write-access at", addr)
 	}

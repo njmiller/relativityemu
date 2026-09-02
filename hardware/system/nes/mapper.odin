@@ -15,32 +15,37 @@ MapperInfo :: struct {
 }
 
 // Call the different mapper routines implemented in the mapper package.
-update_mi :: proc(cart: ^Cartridge, addr: u16, data: u8, prg_val: u8) {
+prg_write :: proc(cart: ^Cartridge, addr: u16, data: u8) {
 	// delete(bus.prg_rom)
+
+	// Boards with no bus conflict resolution drive the written value onto a bus the
+	// ROM is also driving, so what the mapper latches is the AND of the two. The
+	// mappers that emulate that need the ROM byte under the address being written
+	prg_val := prg_read(cart, addr)
 
 	switch cart.mapper.num {
 	case 0:
-		update_mapper_0()
+		write_mapper_0()
 	case 1:
-		update_mapper_1(cart, addr, data)
+		write_mapper_1(cart, addr, data)
 	case 2:
-		update_mapper_2(cart, data, prg_val)
+		write_mapper_2(cart, data, prg_val)
 	case 3:
-		update_mapper_3(cart, data, prg_val)
+		write_mapper_3(cart, data, prg_val)
 	case 7:
-		update_mapper_7(cart, data)
+		write_mapper_7(cart, data)
 	case 11:
-		update_mapper_11(cart, data)
+		write_mapper_11(cart, data)
 	case:
 		log.fatal("Unimplemented mapper:", cart.mapper.num)
 	}
 }
 
-update_mapper_0 :: proc() {
+write_mapper_0 :: proc() {
 	log.fatal("Trying to write to PRG ROM in Mapper 0")
 }
 
-update_mapper_1 :: proc(cart: ^Cartridge, addr: u16, data: u8) {
+write_mapper_1 :: proc(cart: ^Cartridge, addr: u16, data: u8) {
 	mi := &cart.mapper
 
 	// MMC1 shift register protocol only applies to $8000-$FFFF
@@ -108,23 +113,23 @@ update_mapper_1 :: proc(cart: ^Cartridge, addr: u16, data: u8) {
 }
 
 // UxROM
-update_mapper_2 :: proc(cart: ^Cartridge, data: u8, prg_val: u8) {
+write_mapper_2 :: proc(cart: ^Cartridge, data: u8, prg_val: u8) {
 	latched := data & prg_val
 	cart.mapper.info[0] = auto_cast (latched & 0b0000_1111)
 }
 
 // CNROM
-update_mapper_3 :: proc(cart: ^Cartridge, data: u8, prg_val: u8) {
+write_mapper_3 :: proc(cart: ^Cartridge, data: u8, prg_val: u8) {
 	latched := data & prg_val
 	cart.mapper.info[0] = auto_cast (latched & 0b0000_0011)
 }
 
 // MMC3
-update_mapper_4 :: proc(cart: ^Cartridge, data: u8, prg_val: u8) {
+write_mapper_4 :: proc(cart: ^Cartridge, data: u8, prg_val: u8) {
 }
 
 // AxROM
-update_mapper_7 :: proc(cart: ^Cartridge, data: u8) {
+write_mapper_7 :: proc(cart: ^Cartridge, data: u8) {
 	/* 7  bit  0
 	   ---- ----
 	   xxxM xPPP
@@ -144,10 +149,10 @@ update_mapper_7 :: proc(cart: ^Cartridge, data: u8) {
 	cart.mirroring = data & 0b0001_0000 != 0 ? .ONE_SCREEN_UPPER : .ONE_SCREEN_LOWER
 }
 
-update_mapper_10 :: proc(cart: ^Cartridge, addr: u16, data: u8) {
+write_mapper_10 :: proc(cart: ^Cartridge, addr: u16, data: u8) {
 }
 
-update_mapper_11 :: proc(cart: ^Cartridge, data: u8) {
+write_mapper_11 :: proc(cart: ^Cartridge, data: u8) {
 	/* 7  bit  0
 	   ---- ----
 	   CCCC LLPP
