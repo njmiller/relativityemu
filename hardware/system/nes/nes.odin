@@ -70,7 +70,7 @@ bus_mem_read :: proc(bus: ^mos6502.Bus, addr: u16) -> u8 {
 	case APU_REGISTERS ..= APU_REGISTERS_END:
 		mem_val = read_apu_register(&bus.apu, addr)
 	case 0x6000 ..= 0x7FFF:
-		mem_val = bus.cart.prg_ram[addr - 0x6000]
+		mem_val = prg_ram_read(&bus.cart, addr)
 	case 0x8000 ..= 0xFFFF:
 		mem_val = prg_read(&bus.cart, addr)
 	case:
@@ -105,8 +105,7 @@ bus_mem_write :: proc(bus: ^mos6502.Bus, addr: u16, data: u8) {
 		// Writing to 0x4017 writes to the APU
 		write_apu_register(&bus.apu, addr, data)
 	case 0x6000 ..= 0x7FFF:
-		bus.cart.prg_ram[addr - 0x6000] = data
-		bus.cart.prg_ram_dirty = true
+		prg_ram_write(&bus.cart, addr, data)
 	case 0x8000 ..= 0xFFFF:
 		prg_write(&bus.cart, addr, data)
 	case:
@@ -148,7 +147,7 @@ init_nes :: proc(fn: string) -> ^NES {
 	// The PPU reads its CHR data, mirroring, and CHR banking off the cartridge
 	nes.bus.ppu.cart = &nes.bus.cart
 
-	nes.bus.cart.prg_ram = make([]u8, 8192)
+	nes.bus.cart.prg_ram = make([]u8, nes.bus.cart.prg_ram_size)
 	if nes.bus.cart.has_battery {
 		nes.bus.cart.save_path = save_path_for_rom(fn)
 		load_sram(&nes.bus.cart)

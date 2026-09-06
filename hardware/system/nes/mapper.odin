@@ -102,8 +102,9 @@ write_mapper_1 :: proc(cart: ^Cartridge, addr: u16, data: u8) {
 			// $C000-$DFFF - CHR Bank 1 (5 bits)
 			mi.info[4] = shift_val & 0x1F
 		case 0x6000:
-			// $E000-$FFFF - PRG Bank (4 bits)
-			mi.info[5] = shift_val & 0x0F
+			// $E000-$FFFF - PRG Bank (4 bits, plus bit 4 as the PRG RAM chip
+			// enable). read_mapper_1 masks the bank back down to 4 bits
+			mi.info[5] = shift_val & 0x1F
 		}
 
 		// Reset shift register
@@ -201,7 +202,8 @@ init_mapper_1 :: proc(cart: ^Cartridge) {
 	// info[2]: Control register (initialize to 0x0C - PRG mode 3)
 	// info[3]: CHR Bank 0 register (initially 0)
 	// info[4]: CHR Bank 1 register (initially 0)
-	// info[5]: PRG Bank register (initially 0)
+	// info[5]: PRG Bank register (initially 0). Bits 3:0 are the bank and bit 4
+	//          is the PRG RAM chip enable, where a 1 disables the RAM
 	// info[6]: Number of PRG banks (for boundary checking)
 	// info[7]: Number of CHR banks (0 means the cart has CHR RAM)
 	mi.info[0] = 0
@@ -293,6 +295,29 @@ prg_read :: proc(cart: ^Cartridge, addr: u16) -> u8 {
 	return data
 }
 
+// Read the cart RAM window at CPU $6000-$7FFF. Most carts just expose a flat 8kB
+// of RAM here, but some mappers bank it, gate it behind an enable bit, or map PRG
+// ROM into the window instead. Unlike prg_read an unhandled mapper is not an error
+// because plain unbanked RAM is the right answer for most of them
+prg_ram_read :: proc(cart: ^Cartridge, addr: u16) -> u8 {
+	switch cart.mapper.num {
+	case 1:
+		return read_mapper_1_ram(cart, addr)
+	case:
+		return cart.prg_ram[addr - 0x6000]
+	}
+}
+
+prg_ram_write :: proc(cart: ^Cartridge, addr: u16, data: u8) {
+	switch cart.mapper.num {
+	case 1:
+		write_mapper_1_ram(cart, addr, data)
+	case:
+		cart.prg_ram[addr - 0x6000] = data
+		cart.prg_ram_dirty = true
+	}
+}
+
 read_mapper_0 :: proc(cart: ^Cartridge, addr: u16) -> u8 {
 	nbanks := cart.mapper.info[0]
 	addr := addr - 0x8000
@@ -360,6 +385,40 @@ read_mapper_1 :: proc(cart: ^Cartridge, addr: u16) -> u8 {
 	}
 
 	return cart.prg_rom[rom_addr]
+}
+
+// SOROM (16kB of PRG RAM) and SXROM (32kB) bank the $6000-$7FFF window with bits of
+// the CHR Bank 0 register: SOROM uses bit 3 and SXROM uses bits 3:2. Those bits mean
+// something else on the boards that only have 8kB, so which decode applies is taken
+// from how much RAM the cart was actually given rather than from a board name
+mapper_1_ram_offset :: proc(cart: ^Cartridge, addr: u16) -> int {
+	bank := 0
+	switch len(cart.prg_ram) / PRG_RAM_BANK_SIZE {
+	case 2:
+		bank = (cart.mapper.info[3] >> 3) & 0x01
+	case 4:
+		bank = (cart.mapper.info[3] >> 2) & 0x03
+	}
+
+	return bank * PRG_RAM_BANK_SIZE + int(addr - 0x6000)
+}
+
+read_mapper_1_ram :: proc(cart: ^Cartridge, addr: u16) -> u8 {
+	// Bit 4 of the PRG Bank register disconnects the RAM chip. A real cart leaves
+	// the CPU reading whatever was last on the bus, but there is no open bus
+	// emulation here so a disabled read gives back 0 instead
+	if cart.mapper.info[5] & 0x10 != 0 do return 0
+
+	return cart.prg_ram[mapper_1_ram_offset(cart, addr)]
+}
+
+write_mapper_1_ram :: proc(cart: ^Cartridge, addr: u16, data: u8) {
+	// A write with the RAM chip disabled goes nowhere, and must not mark the save
+	// dirty because nothing in the RAM changed
+	if cart.mapper.info[5] & 0x10 != 0 do return
+
+	cart.prg_ram[mapper_1_ram_offset(cart, addr)] = data
+	cart.prg_ram_dirty = true
 }
 
 read_mapper_2 :: proc(cart: ^Cartridge, addr: u16) -> u8 {

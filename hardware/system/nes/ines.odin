@@ -123,6 +123,23 @@ read_ines :: proc(fn: string) -> Cartridge {
 	if mirroring == 1 do mirroring2 = .VERTICAL
 	if mirroring == 2 do mirroring2 = .FOUR_SCREEN
 
+	// Header byte 8 counts the PRG RAM in 8kB units, and a 0 there means 8kB by
+	// the iNES 1.0 convention rather than none at all
+	prg_ram_size := max(1, int(prg_ram_size_8)) * PRG_RAM_BANK_SIZE
+
+	// The MMC1 boards that bank their PRG RAM (SOROM with 16kB, SXROM with 32kB)
+	// almost always still report 0 in byte 8, so the header alone would leave the
+	// banking nowhere to bank to. Give those carts the full 32kB up front.
+	//
+	// The bank is selected by bits of the CHR Bank 0 register, so this can only be
+	// done when the cart has CHR RAM. On a cart with CHR ROM those same bits are
+	// real CHR bank selects and reading them as a RAM bank would scramble the RAM
+	if mapper == 1 && has_battery && is_chr_ram && prg_ram_size < 4 * PRG_RAM_BANK_SIZE {
+		prg_ram_size = 4 * PRG_RAM_BANK_SIZE
+	}
+
+	fmt.println("LEN PRG RAM:", prg_ram_size)
+
 	rom := Cartridge {
 		prg_rom      = prg_rom,
 		chr_rom      = chr_rom,
@@ -132,7 +149,7 @@ read_ines :: proc(fn: string) -> Cartridge {
 		nchr_banks   = num_8,
 		is_chr_ram   = is_chr_ram,
 		has_battery  = has_battery,
-		prg_ram_size = int(prg_ram_size_8),
+		prg_ram_size = prg_ram_size,
 	}
 
 	return rom
