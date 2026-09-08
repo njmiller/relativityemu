@@ -26,6 +26,11 @@ HP_ALPHA :: 0.98718
 
 BUFFER_SIZE :: 512
 
+// Target number of samples to keep in queue. If it strays too far from this
+// change the sample rate in order to get back so audio does not get out
+// of sync
+TARGET_QUEUED_SAMPLES :: 2048
+
 // NES APU Implementation
 APU :: struct {
 	pulse1:             PulseChannel,
@@ -69,6 +74,10 @@ APU :: struct {
 
 	// Speed number for whether we are fast forwarding or not
 	speed:				f64,
+
+	// Correction applied to the sample rate to hold the
+	// SDL queue at TARGET_QUEUED_SAMPLES.
+	rate_ratio:         f64,
 }
 
 LengthCounter :: struct {
@@ -678,7 +687,7 @@ tick_apu :: proc(apu: ^APU) {
 	apu.sample_sum += get_sample(apu)
 	apu.sample_num += 1
 
-	ticks_per_sample := TICKS_PER_SAMPLE * apu.speed
+	ticks_per_sample := TICKS_PER_SAMPLE * apu.speed * apu.rate_ratio
 
 	// CPU runs at 1.789 MHz and we want to generate samples at AUDIO_SAMPLE_RATE
 	// It would be around 40.5 samples so we need to take care of the fractions
@@ -700,8 +709,8 @@ tick_apu :: proc(apu: ^APU) {
 
 		// sdl3.PutAudioStreamData(apu.audio, &sample, size_of(f32))
 
-		// If we have filled up a seconds worth of data, send it to
-		// the audio device and reset the buffer index
+		// If we have filled up the buffer, send it to the audio device and
+		// reset the buffer index
 		if apu.buf_idx >= BUFFER_SIZE {
 			lenbuf: i32 = BUFFER_SIZE * size_of(f32)
 			buf := raw_data(apu.buffer)
@@ -710,6 +719,13 @@ tick_apu :: proc(apu: ^APU) {
 			sdl3.PutAudioStreamData(apu.audio, buf, lenbuf)
 			apu.buf_idx = 0
 			// fmt.println("Putting Samples", apu.buffer[:25])
+
+			// Audio sampling is not perfect and it can get out of sync.
+			// Slightly modify the audio ratio if the number of samples
+			// in the queue gets out of sync
+			queued := f64(sdl3.GetAudioStreamQueued(apu.audio)) / size_of(f32)
+			err := (queued - TARGET_QUEUED_SAMPLES) / TARGET_QUEUED_SAMPLES
+			apu.rate_ratio = clamp(1.0 + 0.005 * err, 0.995, 1.005)
 		}
 
 		apu.sample_counter -= ticks_per_sample
@@ -720,8 +736,9 @@ tick_apu :: proc(apu: ^APU) {
 init_audio :: proc(apu: ^APU) {
 	fmt.println("Initializing Audio")
 
-	// Not sure why this needs to be here because I am trying to init the audio at the start of the program
-	// but I get a audio subsytem not initialized if I don't do it here
+	// Not sure why this needs to be here because I am trying to init the
+	// audio at the start of the program but I get a audio subsytem not
+	// initialized if I don't do it here
 	assert(sdl3.InitSubSystem(sdl3.INIT_AUDIO), auto_cast sdl3.GetError())
 
 	audio_spec := sdl3.AudioSpec{.F32, 1, AUDIO_SAMPLE_RATE}
@@ -750,4 +767,7 @@ init_audio :: proc(apu: ^APU) {
 
 	// Normal (not fast-forward) speed
 	apu.speed = 1.0
+
+	// To prevent audio from getting out of sync. Start at 1.0
+	apu.rate_ratio = 1.0
 }

@@ -270,6 +270,13 @@ run :: proc(nes: ^NES) {
 		nes.bus.apu.speed = speed
 		nes.bus.frames_per_present = auto_cast speed
 
+		// OAM DMA and the NMI push cycles through tick() that emulate6502p
+		// never reports, so the throttle below has to read the bus counter
+		// rather than the CPU return value. Missing them let the APU run about
+		// 1.7% fast, and since the SDL stream has no backpressure that surplus
+		// piled up as ever growing audio latency
+		prev_ncycles := nes.bus.ncycles
+
 		// The PPU is ticked after each instruction, so an NMI it raises belongs to
 		// the middle of the instruction that gets executed next. The CPU always
 		// finishes that instruction before servicing the interrupt, which is what
@@ -330,8 +337,10 @@ run :: proc(nes: ^NES) {
 		// Do some calculation based on the time it would take the NES to execute
 		// the instruction. Keep track across multiple instructions and
 		// sleep when the time crosses a certain threshold.
-		num_cycles_tot += num_cycles
-		ns_per_cycle := 558.6592
+		num_cycles_tot += nes.bus.ncycles - prev_ncycles
+		// 1e9 / CPU_CLOCK_HZ. Has to agree with the clock the APU derives its
+		// sample rate from or the two drift apart
+		ns_per_cycle := 558.7301
 		// time_cycles : int = auto_cast(f64(num_cycles_tot) * ns_per_cycle)
 		real_ns := f64(num_cycles_tot) * ns_per_cycle / speed
 		// if time_cycles > 1_000_000 {
