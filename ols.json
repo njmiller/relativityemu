@@ -3,15 +3,15 @@
     "collections": [
         {
             "name": "core",
-            "path": "C:\\ProgrammingLanguages\\Odin\\core"
+            "path": "/Users/njmiller/ProgrammingLanguages/Odin/core"
         },
         {
             "name": "base",
-            "path": "C:\\ProgrammingLanguages\\Odin\\base"
+            "path": "/Users/njmiller/ProgrammingLanguages/Odin/base"
         },
         {
             "name": "hardware",
-            "path": "C:\\dev\\MyProjects\\odinnes\\hardware"
+            "path": "/Users/njmiller/dev/relativityemu/hardware"
         }
     ],
     "enable_document_symbols": true,
